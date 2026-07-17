@@ -217,20 +217,41 @@ nft_apply_zapret() {
 
 	qnum=$(uci_get zapret_qnum)
 	[ -n "$qnum" ] || qnum=200
+	fake=$(uci_get fakeip_inet4_range)
+	[ -n "$fake" ] || fake=198.18.0.0/15
+	elems=$(nft_build_cidr_elements)
+	set_block=""
+	skip_cidr=""
+	if [ -n "$elems" ]; then
+		set_block="
+	set vpn_cidr {
+		type ipv4_addr
+		flags interval
+		auto-merge
+		elements = { $elems }
+	}"
+		skip_cidr="
+		ip daddr @vpn_cidr return"
+	fi
 
 	nft_flush_zapret
 
-	# Only LAN→WAN early TCP — skip already-tproxy'd / lo
+	# Early TCP → nfqws. Never touch FakeIP / Telegram·Meta CIDR / marked tproxy.
 	if nft -f - <<EOF
 table inet rvpn_zapret {
+$set_block
 	chain postrouting {
 		type filter hook postrouting priority mangle; policy accept;
-		oifname != "lo" meta l4proto tcp tcp dport { 80, 443 } ct original packets 1-12 queue flags bypass to $qnum
+		oifname "lo" return
+		meta mark 0x1 return
+		ip daddr $fake return
+$skip_cidr
+		meta l4proto tcp tcp dport { 80, 443 } ct original packets 1-12 queue flags bypass to $qnum
 	}
 }
 EOF
 	then
-		log "nft zapret queue $qnum (br-lan only)"
+		log "nft zapret queue $qnum (skip FakeIP/vpn_cidr)"
 	else
 		log "ERROR: nft zapret apply failed"
 		return 1

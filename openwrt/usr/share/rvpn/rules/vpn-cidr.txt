@@ -1,18 +1,21 @@
-# Telegram DC + media (AS62041) — keep broad enough for stickers/photos/video
-149.154.160.0/20
-149.154.164.0/22
+# VPN by IP (app connects to DC/CDN by address, not only DNS).
+# Telegram IPv4 — official https://core.telegram.org/resources/cidr.txt
+# + ranges still announced by Telegram ASNs (AS62041/62014/59930/44907/211157).
+# Sync: sh tools/sync-telegram-cidr.sh
+#
+# --- Telegram (official) ---
+91.105.192.0/23
 91.108.4.0/22
 91.108.8.0/22
 91.108.12.0/22
 91.108.16.0/22
 91.108.20.0/22
-91.108.36.0/23
-91.108.38.0/23
 91.108.56.0/22
-95.161.64.0/20
-# Extra TG-related / CDN edges often seen in RU
+149.154.160.0/20
 185.76.151.0/24
-# Meta / Facebook / Instagram / WhatsApp (AS32934)
+# --- Telegram (BGP extras, media/CDN) ---
+95.161.64.0/20
+# --- Meta / Facebook / Instagram / WhatsApp (AS32934) ---
 31.13.24.0/21
 31.13.64.0/18
 66.220.144.0/20

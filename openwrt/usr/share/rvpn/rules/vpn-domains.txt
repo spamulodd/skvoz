@@ -28,7 +28,7 @@ lh4.googleusercontent.com
 lh5.googleusercontent.com
 lh6.googleusercontent.com
 jnn-pa.googleapis.com
-# --- Telegram ---
+# --- Telegram (domains + CDN; DC/media IPs also in vpn-cidr.txt) ---
 telegram.org
 t.me
 telegra.ph
@@ -41,9 +41,17 @@ core.telegram.org
 cdn-telegram.org
 telegramcdn.org
 telegram-cdn.org
+cdn.telegram.org
+venus.web.telegram.org
+pluto.web.telegram.org
+flora.web.telegram.org
+vesta.web.telegram.org
+aurora.web.telegram.org
 telesco.pe
 legra.ph
 graph.org
+telegram.space
+translations.telegram.org
 # --- Meta ---
 instagram.com
 cdninstagram.com

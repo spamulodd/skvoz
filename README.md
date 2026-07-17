@@ -1,47 +1,81 @@
 # Skvoz
 
-Гибридный обход блокировок для OpenWrt: **zapret** (обход DPI через nfqws) + узкий **VPN** (sing-box) для жёстко заблокированных сервисов. Рунет, игры и прочий трафик — напрямую.
+Гибридный обход блокировок для OpenWrt: **zapret** (DPI / nfqws) + узкий **VPN** (sing-box, FakeIP + CIDR). Рунет, игры и остальной трафик идут напрямую.
 
 Репозиторий: https://github.com/spamulodd/skvoz
 
-## Матрица маршрутизации
+## Как это работает
 
-Списки доменов и IP **лежат в git** (`openwrt/usr/share/rvpn/rules/`) и подхватываются при установке — **ручной shunt на роутере не нужен**.
+```mermaid
+flowchart TB
+  subgraph LAN["Домашняя сеть"]
+    C[Клиент: браузер / Telegram / игры]
+  end
 
-| Слой | Ресурсы |
-|------|---------|
-| **DIRECT** | Рунет (geoip), private, игры, всё остальное |
-| **zapret** | YouTube (видео/плеер), hdrezka, rutracker |
-| **VPN** | Telegram (+ DC CIDR), Instagram/Meta, Discord, TikTok, X, Gemini, ChatGPT, новости |
+  subgraph R["Роутер OpenWrt · Skvoz"]
+    DNS["dnsmasq<br/>filter_aaaa + DoH/DoT block"]
+    FIP["FakeIP 198.18.0.0/15<br/>vpn-domains.txt"]
+    NFT{"nft prerouting"}
+    Q["rvpn_quic<br/>UDP/443 reject"]
+    TP["TPROXY → sing-box<br/>FakeIP + vpn-cidr"]
+    Z["nfqws / zapret<br/>dpi.txt · TCP 80/443"]
+    SB["sing-box urltest<br/>Hysteria2 / VLESS…"]
+  end
 
-Подробная матрица, порядок обработки и файлы списков: [`openwrt/usr/share/rvpn/rules/ROUTING.md`](openwrt/usr/share/rvpn/rules/ROUTING.md).
+  subgraph OUT["Выход"]
+    WAN["Прямой WAN"]
+    VPS["VPS за границей"]
+    NET["Интернет"]
+  end
 
-## YouTube
+  C --> DNS
+  DNS -->|домен из vpn-domains| FIP
+  DNS -->|остальное| NFT
+  FIP --> NFT
+  C --> NFT
 
-| Что | Слой | Список |
-|-----|------|--------|
-| Видео, плеер, `googlevideo.com` | zapret (nfqws) | `dpi.txt` |
-| Превью, аватарки, community (`ytimg`, `ggpht`, `googleusercontent`) | VPN FakeIP | `vpn-domains.txt` |
+  NFT -->|FakeIP или vpn-cidr| TP
+  NFT -->|прочий UDP/443| Q
+  Q -->|reject| C
+  NFT -->|остальной TCP/UDP| WAN
 
-Домены **не дублируются** между `dpi.txt` и `vpn-domains.txt`.
+  TP --> SB --> VPS --> NET
+  WAN -->|hostlist dpi.txt| Z --> NET
+  WAN -->|игры / рунет / default| NET
+```
 
-Дополнительно при включённом zapret или VPN:
+Три слоя:
 
-- **filter-aaaa** в dnsmasq — клиенты не уходят на IPv6 в обход правил
-- **блок DoH/DoT** (nft по `doh-cidr.txt`) — браузер использует DNS роутера
+| Слой | Когда | Примеры |
+|------|--------|---------|
+| **DIRECT** | geoip / private / игры / всё остальное | Steam, банки РФ, обычные сайты |
+| **zapret** | DPI на реальных IP, hostlist | hdrezka, rutracker |
+| **VPN** | FakeIP по домену **или** TPROXY по IP | YouTube, Telegram (+ DC/media CIDR), Meta, Discord, TikTok, X, AI, новости |
+
+Telegram ходит на DC **по IP** (не только по DNS). Поэтому медиа (фото/видео/стикеры) требует актуального `vpn-cidr.txt`. Официальный список: https://core.telegram.org/resources/cidr.txt — обновление: `sh tools/sync-telegram-cidr.sh`.
+
+Подробная матрица: [`openwrt/usr/share/rvpn/rules/ROUTING.md`](openwrt/usr/share/rvpn/rules/ROUTING.md).
+
+## Защиты DNS
+
+При включённом zapret или VPN:
+
+- **filter_aaaa** — клиенты не уходят в IPv6 в обход правил
+- **блок DoH/DoT** (`doh-cidr.txt`) — браузер использует DNS роутера
+- **QUIC reject** (UDP/443) — кроме FakeIP и `vpn_cidr` (иначе ломаются YouTube API и Telegram media)
 
 ## Требования
 
-- OpenWrt 24+/25.x
-- `sing-box` (для VPN-слоя)
-- `nfqws` под вашу CPU → `/opt/rvpn/nfqws` (бинарник не входит в пакет)
+- OpenWrt 24+/25.x (apk или opkg)
+- `sing-box` (VPN-слой)
+- `nfqws` под вашу CPU → `/opt/rvpn/nfqws` (в пакет не входит)
 - `libnetfilter-queue`, `kmod-nft-queue`, `kmod-nft-tproxy`
 
 ## Установка
 
 Скрипты и списки **не зависят от архитектуры**; `nfqws` кладётся отдельно.
 
-### Скрипт `tools/install.sh` (apk/opkg автоматически)
+### `tools/install.sh`
 
 ```sh
 git clone https://github.com/spamulodd/skvoz.git && cd skvoz
@@ -63,31 +97,48 @@ opkg install /tmp/skvoz_*_all.ipk
 # скопируйте package/skvoz и openwrt/ в дерево SDK
 make package/skvoz/compile V=s
 apk add --allow-untrusted bin/packages/*/base/skvoz_*.apk   # OpenWrt 25+
-# или opkg install … на старых версиях
 ```
 
 ## После установки
 
-1. Отредактируйте `/etc/config/rvpn`: замените плейсхолдеры `YOUR_VPS_IP`, `YOUR_HY2_PASSWORD` (и при необходимости `ui_secret`).
+1. Отредактируйте `/etc/config/rvpn`: `YOUR_VPS_IP`, `YOUR_HY2_PASSWORD` (и при необходимости `ui_secret`).
 2. Положите `nfqws` в `/opt/rvpn/nfqws` (`chmod +x`).
-3. Веб-UI: `http://ROUTER:81/` — пароль: `uci get rvpn.main.ui_secret`.
-4. Слои **выключены** по умолчанию; init.d `rvpn` включён, но zapret/VPN не поднимает.
+3. UI: `http://ROUTER:81/` — пароль: `uci get rvpn.main.ui_secret`.
+4. Слои **выключены** по умолчанию:
 
 ```sh
 rvpnctl enable-zapret    # после nfqws
 rvpnctl enable-vpn       # после настройки ноды и sing-box
 ```
 
+## Списки маршрутизации (git)
+
+| Файл | Назначение |
+|------|------------|
+| `vpn-domains.txt` | FakeIP → VPN |
+| `vpn-cidr.txt` | IP → VPN (Telegram DC/media, Meta) |
+| `dpi.txt` | zapret hostlist |
+| `games-domains.txt` | DIRECT |
+| `doh-cidr.txt` | блок публичных DoH |
+
+```sh
+sh tools/sync-telegram-cidr.sh   # обновить Telegram CIDR из official
+```
+
 ## `rvpnctl`
 
 | Команда | Действие |
 |---------|----------|
-| `rvpnctl status` | Состояние слоёв, процессы, nft |
-| `rvpnctl start` / `stop` / `restart` | Управление сервисом |
-| `rvpnctl enable-zapret` / `disable-zapret` | Вкл/выкл zapret |
-| `rvpnctl enable-vpn` / `disable-vpn` | Вкл/выкл VPN |
+| `rvpnctl status` | Слои, процессы, nft |
+| `rvpnctl start` / `stop` / `restart` | Сервис |
+| `rvpnctl enable-zapret` / `disable-zapret` | zapret |
+| `rvpnctl enable-vpn` / `disable-vpn` | VPN |
 | `rvpnctl gen-config` | Пересобрать sing-box.json |
-| `rvpnctl log [N]` | Последние N строк лога (по умолчанию 80) |
+| `rvpnctl log [N]` | Лог (по умолчанию 80 строк) |
+
+## Fail-open
+
+При падении sing-box watchdog снимает FakeIP-hijack DNS, чтобы не оставить клиентов без интернета. Остановка: nft flush **до** kill процессов.
 
 ## Лицензия
 
