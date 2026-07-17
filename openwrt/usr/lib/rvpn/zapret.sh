@@ -1,5 +1,5 @@
 #!/bin/sh
-# zapret / nfqws — DPI bypass for dpi.txt (YouTube video/player, trackers)
+# zapret / nfqws — DPI bypass for dpi.txt
 
 . /usr/lib/rvpn/common.sh
 
@@ -35,6 +35,26 @@ zapret_ensure_bin() {
 	return 1
 }
 
+# Kill only Skvoz nfqws (pidfile and /opt/rvpn/nfqws) — never killall.
+zapret_kill_ours() {
+	if [ -f "$ZAP_PID" ]; then
+		kill "$(cat "$ZAP_PID")" 2>/dev/null || true
+		rm -f "$ZAP_PID"
+	fi
+	# Match only our binary path
+	pids=$(pgrep -f '^/opt/rvpn/nfqws' 2>/dev/null || true)
+	for p in $pids; do
+		kill "$p" 2>/dev/null || true
+	done
+}
+
+zapret_running() {
+	if [ -f "$ZAP_PID" ] && kill -0 "$(cat "$ZAP_PID" 2>/dev/null)" 2>/dev/null; then
+		return 0
+	fi
+	pgrep -f '^/opt/rvpn/nfqws' >/dev/null 2>&1
+}
+
 zapret_start() {
 	zap=$(uci_get zapret_enabled)
 	[ "$zap" = "1" ] || return 0
@@ -43,12 +63,14 @@ zapret_start() {
 	b=$(zapret_bin)
 	qnum=$(uci_get zapret_qnum)
 	[ -n "$qnum" ] || qnum=200
+	case "$qnum" in
+	''|*[!0-9]*) qnum=200 ;;
+	esac
 	hl="$RVPN_RULES/dpi.txt"
 
-	killall nfqws 2>/dev/null || true
+	zapret_kill_ours
 	sleep 1
 
-	# Stronger TLS fake helps YT image hosts under DPI
 	fake_tls=""
 	[ -f /opt/zapret/files/fake/tls_clienthello_www_google_com.bin ] && \
 		fake_tls="--dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin"
@@ -70,12 +92,8 @@ zapret_start() {
 		>/tmp/rvpn/nfqws.log 2>&1
 
 	sleep 2
-	if pgrep -f '/opt/rvpn/nfqws' >/dev/null 2>&1 || pgrep -x nfqws >/dev/null 2>&1; then
+	if zapret_running; then
 		log "nfqws started qnum=$qnum"
-		return 0
-	fi
-	if [ -f "$ZAP_PID" ] && kill -0 "$(cat "$ZAP_PID")" 2>/dev/null; then
-		log "nfqws started qnum=$qnum (pidfile)"
 		return 0
 	fi
 	log "ERROR: nfqws failed"
@@ -84,8 +102,6 @@ zapret_start() {
 }
 
 zapret_stop() {
-	[ -f "$ZAP_PID" ] && kill "$(cat "$ZAP_PID")" 2>/dev/null || true
-	killall nfqws 2>/dev/null || true
-	rm -f "$ZAP_PID"
+	zapret_kill_ours
 	log "nfqws stopped"
 }

@@ -22,10 +22,15 @@ text_hdr() {
 }
 
 require_auth() {
-	# skip auth for nothing — all mutating + status need token
-	want=$(ensure_ui_secret)
-	got=$(get_arg token)
-	[ -z "$got" ] && got=$HTTP_X_SKVOZ_TOKEN
+	want=$(ensure_ui_secret) || {
+		echo "Status: 503 Service Unavailable"
+		json_hdr
+		echo '{"error":"no_ui_secret"}'
+		exit 0
+	}
+	# Prefer header only (avoid token in access logs). Query token accepted as legacy.
+	got=$HTTP_X_SKVOZ_TOKEN
+	[ -z "$got" ] && got=$(get_arg token)
 	if [ -z "$got" ] || [ "$got" != "$want" ]; then
 		echo "Status: 401 Unauthorized"
 		json_hdr
@@ -34,8 +39,15 @@ require_auth() {
 	fi
 }
 
+# Async service action under flock
+svc_async() {
+	action=$1
+	(
+		rvpn_with_lock /etc/init.d/rvpn "$action" >>"$RVPN_LOG" 2>&1
+	) &
+}
+
 case "$cmd" in
-# first-time helper: returns whether token required (always) — no secret leak
 ping_public)
 	json_hdr
 	echo '{"ok":1,"auth":1,"name":"Skvoz"}'
@@ -59,21 +71,21 @@ set)
 		;;
 	esac
 	uci commit rvpn
-	# async restart — do not block uhttpd
-	( /etc/init.d/rvpn restart >>"$RVPN_LOG" 2>&1 ) &
+	svc_async restart
 	json_hdr
-	printf '{"ok":1,"async":1,"zapret_enabled":%s,"vpn_enabled":%s}\n' \
+	# Include enabled flags; running updates after async restart (UI polls).
+	printf '{"ok":1,"async":1,"zapret_enabled":%s,"vpn_enabled":%s,"zapret_running":0,"vpn_running":0}\n' \
 		"$(uci_get zapret_enabled)" "$(uci_get vpn_enabled)"
 	;;
 stop)
 	require_auth
-	( /etc/init.d/rvpn stop >>"$RVPN_LOG" 2>&1 ) &
+	svc_async stop
 	text_hdr
 	echo OK
 	;;
 restart)
 	require_auth
-	( /etc/init.d/rvpn restart >>"$RVPN_LOG" 2>&1 ) &
+	svc_async restart
 	text_hdr
 	echo OK
 	;;

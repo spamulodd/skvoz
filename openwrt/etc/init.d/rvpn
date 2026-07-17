@@ -15,13 +15,15 @@ USE_PROCD=0
 
 start_service() {
 	mkdir -p "$RVPN_RUN"
+	chmod 700 "$RVPN_RUN" 2>/dev/null || true
 	log "start requested"
-	ensure_ui_secret >/dev/null
-	ensure_clash_secret >/dev/null
+	ensure_ui_secret >/dev/null || log "WARN: ui_secret not ready"
+	ensure_clash_secret >/dev/null || log "WARN: clash_secret not ready"
 	health_preflight || return 1
 
 	zap=$(uci_get zapret_enabled)
 	vpn=$(uci_get vpn_enabled)
+	vpn_ok=0
 
 	if [ "$zap" != "1" ] && [ "$vpn" != "1" ]; then
 		log "both layers off"
@@ -33,8 +35,10 @@ start_service() {
 	if [ "$vpn" = "1" ]; then
 		if sb_start; then
 			nft_apply_vpn || log "WARN: nft vpn failed"
+			vpn_ok=1
 		else
-			log "VPN start failed — fail-open"
+			log "VPN start failed — fail-open (no FakeIP DNS)"
+			nft_flush_vpn
 		fi
 	fi
 
@@ -46,7 +50,7 @@ start_service() {
 		fi
 	fi
 
-	# DNS filters + FakeIP upstream; DoH/QUIC shields (lists from git)
+	# FakeIP only if sing-box is up (dns_apply checks sb_pids)
 	dns_apply
 	nft_apply_quic
 	nft_apply_doh
@@ -57,8 +61,12 @@ start_service() {
 		return 1
 	fi
 	echo running >"$RVPN_STATE"
-	watchdog_start
-	log "start done"
+	if [ "$vpn_ok" = "1" ]; then
+		watchdog_start
+	else
+		watchdog_stop
+	fi
+	log "start done vpn_ok=$vpn_ok"
 }
 
 stop_service() {
@@ -70,8 +78,7 @@ stop_service() {
 	nft_flush_doh
 	ip rule del fwmark 0x1 lookup 100 2>/dev/null || true
 	ip route flush table 100 2>/dev/null || true
-	kill -9 "$(cat "$RVPN_RUN/nfqws.pid" 2>/dev/null)" 2>/dev/null || true
-	killall -9 nfqws 2>/dev/null || true
+	zapret_stop
 	sb_kill_ours
 	rm -f "$RVPN_RUN/sing-box.pid" "$RVPN_RUN/nfqws.pid" 2>/dev/null || true
 	dns_restore

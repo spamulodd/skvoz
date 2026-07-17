@@ -3,42 +3,38 @@
 . /usr/lib/rvpn/dns.sh
 . /usr/lib/rvpn/nft.sh
 
+# Fail-open when sing-box dies: flush VPN nft, restore DNS, then aaaa-only
+# if zapret still needs it. NEVER re-apply FakeIP until sing-box is back.
+watchdog_failopen() {
+	log "WATCHDOG: sing-box dead — DNS/nft fail-open"
+	nft_flush_vpn
+	dns_restore
+	zap=$(uci_get zapret_enabled)
+	if [ "$zap" = "1" ]; then
+		dns_apply_aaaa_only
+	fi
+}
+
 watchdog_loop() {
 	while true; do
 		sleep 15
 		vpn=$(uci_get vpn_enabled)
 		[ "$vpn" = "1" ] || continue
-		[ -f /tmp/rvpn/dns.applied ] || continue
+		grep -q fakeip /tmp/rvpn/dns.applied 2>/dev/null || continue
 		if [ -z "$(sb_pids)" ]; then
-			log "WATCHDOG: sing-box dead — DNS/nft fail-open"
-			nft_flush_vpn
-			dns_restore
+			watchdog_failopen
 		fi
 	done
 }
 
 watchdog_start() {
 	watchdog_stop
-	# run loop in background without re-entering this file
 	/bin/sh -c '
 		. /usr/lib/rvpn/common.sh
 		. /usr/lib/rvpn/dns.sh
 		. /usr/lib/rvpn/nft.sh
-		while true; do
-			sleep 15
-			vpn=$(uci_get vpn_enabled)
-			[ "$vpn" = "1" ] || continue
-			# only fail-open FakeIP hijack; filter_aaaa-only mode is fine without sing-box
-			grep -q fakeip /tmp/rvpn/dns.applied 2>/dev/null || continue
-			if [ -z "$(sb_pids)" ]; then
-				log "WATCHDOG: sing-box dead — DNS/nft fail-open"
-				nft_flush_vpn
-				dns_restore
-				# re-apply aaaa filter if zapret still on
-				. /usr/lib/rvpn/dns.sh
-				dns_apply
-			fi
-		done
+		. /usr/lib/rvpn/watchdog.sh
+		watchdog_loop
 	' >/dev/null 2>&1 &
 	echo $! >"$RVPN_WD_PID"
 	log "watchdog started pid=$(cat "$RVPN_WD_PID")"

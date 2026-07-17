@@ -39,7 +39,9 @@ health_status_json() {
 	vpn=$(uci_get vpn_enabled)
 	zap_run=0
 	vpn_run=0
-	if pgrep -f '/opt/rvpn/nfqws' >/dev/null 2>&1 || pgrep -x nfqws >/dev/null 2>&1; then
+	if [ -f /tmp/rvpn/nfqws.pid ] && kill -0 "$(cat /tmp/rvpn/nfqws.pid 2>/dev/null)" 2>/dev/null; then
+		zap_run=1
+	elif pgrep -f '^/opt/rvpn/nfqws' >/dev/null 2>&1; then
 		zap_run=1
 	fi
 	[ -n "$(sb_pids)" ] && vpn_run=1

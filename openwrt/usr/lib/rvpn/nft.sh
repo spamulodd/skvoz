@@ -37,7 +37,7 @@ nft_build_doh_elements() {
 		/^[[:space:]]*$/ { next }
 		{
 			gsub(/[[:space:]]/, "")
-			if (length($0) > 0) {
+			if ($0 ~ /^[0-9]{1,3}(\.[0-9]{1,3}){3}\/[0-9]{1,2}$/) {
 				if (n++) printf ", "
 				printf "%s", $0
 			}
@@ -89,12 +89,13 @@ EOF
 nft_build_cidr_elements() {
 	f="$RVPN_RULES/vpn-cidr.txt"
 	[ -f "$f" ] || return 0
+	# Only IPv4 CIDR — reject junk before splicing into nft -f
 	awk '
 		/^[[:space:]]*#/ { next }
 		/^[[:space:]]*$/ { next }
 		{
 			gsub(/[[:space:]]/, "")
-			if (length($0) > 0) {
+			if ($0 ~ /^[0-9]{1,3}(\.[0-9]{1,3}){3}\/[0-9]{1,2}$/) {
 				if (n++) printf ", "
 				printf "%s", $0
 			}

@@ -8,6 +8,10 @@
 
 cmd=${1:-status}
 
+svc() {
+	rvpn_with_lock /etc/init.d/rvpn "$@"
+}
+
 case "$cmd" in
 status)
 	health_status_json
@@ -16,38 +20,44 @@ status)
 	echo "vpn_enabled=$(uci -q get rvpn.main.vpn_enabled)"
 	echo "disable_quic=$(uci -q get rvpn.main.disable_quic)"
 	echo "dns_mode=$(cat /tmp/rvpn/dns.applied 2>/dev/null || echo off)"
-	pgrep -a nfqws 2>/dev/null || echo "nfqws: not running"
+	if [ -f /tmp/rvpn/nfqws.pid ] && kill -0 "$(cat /tmp/rvpn/nfqws.pid 2>/dev/null)" 2>/dev/null; then
+		echo "nfqws: running pid=$(cat /tmp/rvpn/nfqws.pid)"
+	elif pgrep -af '^/opt/rvpn/nfqws' >/dev/null 2>&1; then
+		pgrep -af '^/opt/rvpn/nfqws'
+	else
+		echo "nfqws: not running"
+	fi
 	pgrep -af '/tmp/rvpn/sing-box.json' 2>/dev/null || echo "sing-box: not running"
 	nft list tables 2>/dev/null | grep rvpn || echo "nft: no rvpn tables"
 	;;
 start)
-	/etc/init.d/rvpn start
+	svc start
 	;;
 stop)
-	/etc/init.d/rvpn stop
+	svc stop
 	;;
 restart)
-	/etc/init.d/rvpn restart
+	svc restart
 	;;
 enable-zapret)
 	uci set rvpn.main.zapret_enabled='1'
 	uci commit rvpn
-	/etc/init.d/rvpn restart
+	svc restart
 	;;
 disable-zapret)
 	uci set rvpn.main.zapret_enabled='0'
 	uci commit rvpn
-	/etc/init.d/rvpn restart
+	svc restart
 	;;
 enable-vpn)
 	uci set rvpn.main.vpn_enabled='1'
 	uci commit rvpn
-	/etc/init.d/rvpn restart
+	svc restart
 	;;
 disable-vpn)
 	uci set rvpn.main.vpn_enabled='0'
 	uci commit rvpn
-	/etc/init.d/rvpn restart
+	svc restart
 	;;
 gen-config)
 	sb_generate && echo "OK $RVPN_SB_JSON" || echo FAIL

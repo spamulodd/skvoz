@@ -5,13 +5,43 @@
 
 SB_BIN=/usr/bin/sing-box
 
+# JSON string array from domain list (escaped, validated).
 sb_build_json_array() {
+	awk '
+		function esc(s,   t) {
+			t = s
+			gsub(/\\/, "\\\\", t)
+			gsub(/"/, "\\\"", t)
+			return t
+		}
+		/^[[:space:]]*#/ { next }
+		/^[[:space:]]*$/ { next }
+		{
+			gsub(/[[:space:]]/, "")
+			if ($0 ~ /^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$/) {
+				n++
+				d[n] = $0
+			}
+		}
+		END {
+			printf "["
+			for (i = 1; i <= n; i++) {
+				if (i > 1) printf ","
+				printf "\"%s\"", esc(d[i])
+			}
+			printf "]"
+		}
+	' "$1"
+}
+
+# JSON string array from IPv4 CIDR list only.
+sb_build_cidr_json_array() {
 	awk '
 		/^[[:space:]]*#/ { next }
 		/^[[:space:]]*$/ { next }
 		{
 			gsub(/[[:space:]]/, "")
-			if (length($0) > 0) {
+			if ($0 ~ /^[0-9]{1,3}(\.[0-9]{1,3}){3}\/[0-9]{1,2}$/) {
 				n++
 				d[n] = $0
 			}
@@ -38,25 +68,40 @@ sb_generate() {
 	[ -n "$listen" ] || listen=127.0.0.42
 	tproxy=$(uci_get tproxy_port)
 	[ -n "$tproxy" ] || tproxy=12345
+	valid_port "$tproxy" || tproxy=12345
 	fake=$(uci_get fakeip_inet4_range)
 	[ -n "$fake" ] || fake=198.18.0.0/15
+	valid_ipv4_cidr "$fake" || fake=198.18.0.0/15
 	ut_url=$(uci_get urltest_url)
 	[ -n "$ut_url" ] || ut_url=https://www.gstatic.com/generate_204
 	ut_iv=$(uci_get urltest_interval)
 	[ -n "$ut_iv" ] || ut_iv=2m
+	case "$ut_iv" in
+	*[!A-Za-z0-9.]*) ut_iv=2m ;;
+	esac
 	ut_tol=$(uci_get urltest_tolerance)
 	[ -n "$ut_tol" ] || ut_tol=100
+	case "$ut_tol" in
+	''|*[!0-9]*) ut_tol=100 ;;
+	esac
 	ll=$(uci_get log_level)
-	[ -n "$ll" ] || ll=warn
+	case "$ll" in
+	trace|debug|info|warn|error|fatal|panic) ;;
+	*) ll=warn ;;
+	esac
 
-	clash_secret=$(ensure_clash_secret)
+	clash_secret=$(ensure_clash_secret) || return 1
 	clash_secret_j=$(json_escape "$clash_secret")
 	ut_url_j=$(json_escape "$ut_url")
+	listen_j=$(json_escape "$listen")
+	fake_j=$(json_escape "$fake")
+	ll_j=$(json_escape "$ll")
+	ut_iv_j=$(json_escape "$ut_iv")
 
 	vpn_dom=$(sb_build_json_array "$RVPN_RULES/vpn-domains.txt")
 	games_dom=$(sb_build_json_array "$RVPN_RULES/games-domains.txt")
 	vpn_cidr='[]'
-	[ -f "$RVPN_RULES/vpn-cidr.txt" ] && vpn_cidr=$(sb_build_json_array "$RVPN_RULES/vpn-cidr.txt")
+	[ -f "$RVPN_RULES/vpn-cidr.txt" ] && vpn_cidr=$(sb_build_cidr_json_array "$RVPN_RULES/vpn-cidr.txt")
 
 	outbounds_tmp="$RVPN_RUN/outbounds.jsonl"
 	tags_tmp="$RVPN_RUN/tags.txt"
@@ -71,6 +116,10 @@ sb_generate() {
 		[ -n "$tag" ] || tag="$id"
 		server=$(uci -q get "rvpn.$id.server")
 		port=$(uci -q get "rvpn.$id.port")
+		valid_port "$port" || {
+			log "ERROR: bad port for node $id"
+			continue
+		}
 		tag_j=$(json_escape "$tag")
 		server_j=$(json_escape "$server")
 		case "$type" in
@@ -125,20 +174,21 @@ sb_generate() {
 	done <"$tags_tmp"
 	ut_out="$ut_out]"
 
-	obs="$obs,{\"type\":\"urltest\",\"tag\":\"rvpn-urltest\",\"outbounds\":$ut_out,\"url\":\"$ut_url_j\",\"interval\":\"$ut_iv\",\"tolerance\":$ut_tol}"
+	obs="$obs,{\"type\":\"urltest\",\"tag\":\"rvpn-urltest\",\"outbounds\":$ut_out,\"url\":\"$ut_url_j\",\"interval\":\"$ut_iv_j\",\"tolerance\":$ut_tol}"
 	obs="$obs,{\"type\":\"direct\",\"tag\":\"direct\"}"
 	obs="$obs]"
 
 	if [ "$vpn_cidr" != "[]" ] && [ -n "$vpn_cidr" ]; then
 		inner=$(echo "$vpn_cidr" | sed 's/^\[//;s/\]$//')
-		ip_route_json="[\"$fake\",$inner]"
+		ip_route_json="[\"$fake_j\",$inner]"
 	else
-		ip_route_json="[\"$fake\"]"
+		ip_route_json="[\"$fake_j\"]"
 	fi
 
+	umask 077
 	cat >"$RVPN_SB_JSON" <<EOF
 {
-  "log": {"level": "$ll", "timestamp": true},
+  "log": {"level": "$ll_j", "timestamp": true},
   "experimental": {
     "clash_api": {
       "external_controller": "127.0.0.1:9090",
@@ -156,7 +206,7 @@ sb_generate() {
     "servers": [
       {"tag": "local", "type": "udp", "server": "8.8.8.8"},
       {"tag": "yandex", "type": "udp", "server": "77.88.8.8"},
-      {"tag": "fakeip", "type": "fakeip", "inet4_range": "$fake"}
+      {"tag": "fakeip", "type": "fakeip", "inet4_range": "$fake_j"}
     ],
     "rules": [
       {"query_type": ["HTTPS", "SVCB"], "action": "reject"},
@@ -182,7 +232,7 @@ sb_generate() {
     {
       "type": "direct",
       "tag": "dns-in",
-      "listen": "$listen",
+      "listen": "$listen_j",
       "listen_port": 53
     }
   ],
@@ -202,6 +252,7 @@ sb_generate() {
   }
 }
 EOF
+	chmod 600 "$RVPN_SB_JSON" 2>/dev/null || true
 
 	if ! "$SB_BIN" check -c "$RVPN_SB_JSON" >/tmp/rvpn/sb-check.log 2>&1; then
 		log "ERROR: sing-box check failed"
@@ -220,6 +271,7 @@ sb_start() {
 	sleep 1
 	"$SB_BIN" run -c "$RVPN_SB_JSON" >/tmp/rvpn/sing-box.log 2>&1 &
 	echo $! >"$RVPN_RUN/sing-box.pid"
+	chmod 600 "$RVPN_RUN/sing-box.pid" 2>/dev/null || true
 	sleep 2
 	if [ -z "$(sb_pids)" ]; then
 		log "ERROR: sing-box failed to start"

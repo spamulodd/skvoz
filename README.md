@@ -103,8 +103,8 @@ apk add --allow-untrusted bin/packages/*/base/skvoz_*.apk   # OpenWrt 25+
 
 1. Отредактируйте `/etc/config/rvpn`: `YOUR_VPS_IP`, `YOUR_HY2_PASSWORD` (и при необходимости `ui_secret`).
 2. Положите `nfqws` в `/opt/rvpn/nfqws` (`chmod +x`).
-3. UI: `http://ROUTER:81/` — пароль: `uci get rvpn.main.ui_secret`.
-4. Слои **выключены** по умолчанию:
+3. UI: `http://LAN_IP:81/` (только LAN, `rfc1918_filter=1`) — пароль: `uci get rvpn.main.ui_secret`.
+4. Слои **выключены** в дефолтном конфиге (upgrade **не** сбрасывает включённые слои):
 
 ```sh
 rvpnctl enable-zapret    # после nfqws

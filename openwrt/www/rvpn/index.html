@@ -439,8 +439,8 @@
 
   async function api(query) {
     const t = token();
-    const q = query + (query.indexOf('token=') >= 0 ? '' : (query ? '&' : '') + 'token=' + encodeURIComponent(t));
-    const r = await fetch(API + '?' + q, {
+    // Auth via header only — never put token in query (uhttpd access logs).
+    const r = await fetch(API + '?' + query, {
       cache: 'no-store',
       headers: t ? { 'X-Skvoz-Token': t } : {}
     });
@@ -509,7 +509,11 @@
     try {
       const raw = await api('set&layer=' + layer + '&on=' + (on ? '1' : '0'));
       const j = JSON.parse(raw.trim().split('\n')[0]);
-      renderStatus(j);
+      setSwitch(swZapret, j.zapret_enabled == 1);
+      setSwitch(swVpn, j.vpn_enabled == 1);
+      // Running flags update after async restart
+      await new Promise(function (r) { setTimeout(r, 2500); });
+      await refresh();
     } catch (e) {
       await refresh();
     } finally {

@@ -9,8 +9,10 @@ RVPN_SB_JSON=/tmp/rvpn/sing-box.json
 RVPN_LOG=/tmp/rvpn/rvpn.log
 RVPN_STATE=/tmp/rvpn/state
 RVPN_WD_PID=$RVPN_RUN/watchdog.pid
+RVPN_SVC_LOCK=$RVPN_RUN/service.lock
 
 mkdir -p "$RVPN_RUN" 2>/dev/null || true
+chmod 700 "$RVPN_RUN" 2>/dev/null || true
 
 log() {
 	echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >>"$RVPN_LOG"
@@ -39,6 +41,24 @@ json_escape() {
 		}'
 }
 
+# Port 1–65535
+valid_port() {
+	case "$1" in
+	''|*[!0-9]*) return 1 ;;
+	esac
+	[ "$1" -ge 1 ] && [ "$1" -le 65535 ]
+}
+
+# IPv4 CIDR a.b.c.d/n
+valid_ipv4_cidr() {
+	echo "$1" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}$'
+}
+
+# Domain-ish token for lists
+valid_domain_token() {
+	echo "$1" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$'
+}
+
 norm_bool() {
 	case "$1" in
 	1|on|true|yes|ON|TRUE|YES) echo 1 ;;
@@ -46,11 +66,25 @@ norm_bool() {
 	esac
 }
 
+# Strong random hex; empty on failure (no weak fallbacks).
+rand_hex() {
+	bytes=${1:-16}
+	s=$(dd if=/dev/urandom bs="$bytes" count=1 2>/dev/null | hexdump -v -e '/1 "%02x"' 2>/dev/null)
+	[ -n "$s" ] && [ "${#s}" -ge 16 ] && { echo "$s"; return 0; }
+	if [ -r /proc/sys/kernel/random/uuid ]; then
+		tr -d '-' </proc/sys/kernel/random/uuid
+		return 0
+	fi
+	return 1
+}
+
 ensure_ui_secret() {
 	s=$(uci_get ui_secret)
 	if [ -z "$s" ] || [ "$s" = "CHANGE_ME" ]; then
-		s=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | hexdump -v -e '/1 "%02x"' 2>/dev/null)
-		[ -n "$s" ] || s=$(date +%s)-$$
+		s=$(rand_hex 16) || {
+			log "ERROR: cannot generate ui_secret (no entropy)"
+			return 1
+		}
 		uci set rvpn.main.ui_secret="$s"
 		uci commit rvpn
 		log "generated ui_secret"
@@ -60,22 +94,23 @@ ensure_ui_secret() {
 
 ensure_clash_secret() {
 	s=$(uci_get clash_secret)
-	if [ -z "$s" ]; then
-		s=$(dd if=/dev/urandom bs=12 count=1 2>/dev/null | hexdump -v -e '/1 "%02x"' 2>/dev/null)
-		[ -n "$s" ] || s=skvoz-local
+	if [ -z "$s" ] || [ "$s" = "skvoz-local" ]; then
+		s=$(rand_hex 12) || {
+			log "ERROR: cannot generate clash_secret (no entropy)"
+			return 1
+		}
 		uci set rvpn.main.clash_secret="$s"
 		uci commit rvpn
+		log "generated clash_secret"
 	fi
 	echo "$s"
 }
 
 clash_api_local() {
-	# always probe via loopback
 	echo "127.0.0.1:9090"
 }
 
 sb_pids() {
-	# PIDs of our sing-box instance only
 	pgrep -f '/tmp/rvpn/sing-box.json' 2>/dev/null
 }
 
@@ -85,6 +120,17 @@ sb_kill_ours() {
 	for p in $pids; do
 		kill -9 "$p" 2>/dev/null || true
 	done
+}
+
+# Serialize init.d actions (CGI / rvpnctl).
+rvpn_with_lock() {
+	mkdir -p "$RVPN_RUN"
+	if command -v flock >/dev/null 2>&1; then
+		# shellcheck disable=SC2086
+		flock -w 120 "$RVPN_SVC_LOCK" "$@"
+	else
+		"$@"
+	fi
 }
 
 list_domains() {

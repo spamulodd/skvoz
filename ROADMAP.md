@@ -60,23 +60,15 @@
 
 ## Known issues (code review)
 
-Приоритет для следующих PR.
+Исправлено в дереве (см. коммиты после `2c8fa0c`): fail-open DNS, LAN UI, `chmod 600`, токен только в заголовке, `flock`, DNS backup/`localuse`, kill только своего nfqws, upgrade не гасит слои, `insecure=0`, валидация CIDR/доменов/портов, `tools/test-unit.sh`.
+
+Остаётся на будущее:
 
 | Sev | Проблема | Где |
 |-----|----------|-----|
-| **Critical** | Watchdog после смерти sing-box делает `dns_restore` и сразу `dns_apply` → снова FakeIP на мёртвый `127.0.0.42` | `watchdog.sh` |
-| **Critical** | Если `sb_start` падает, nft VPN не поднимается, но `dns_apply` всё равно включает FakeIP | `init.d/rvpn` + `dns.sh` |
-| High | UI `0.0.0.0:81`, `rfc1918_filter=0` | `tools/postinst.sh` |
-| High | Секреты ноды в `/tmp/rvpn/sing-box.json` без `chmod 600` | `singbox.sh` |
-| High | Токен UI в query string (`?token=`) → логи uhttpd | `index.html` / `rvpn.cgi` |
-| High | Слабые fallback секретов (`skvoz-local`, `date+pid`) | `common.sh` |
-| High | Параллельные CGI restart без `flock` | `rvpn.cgi` |
-| Medium | Бэкап DNS: несколько `server` восстанавливаются одной строкой; `localuse` не откатывается | `dns.sh` |
-| Medium | `killall nfqws` убивает чужой zapret | `zapret.sh` / `init.d` |
-| Medium | Upgrade всегда ставит слои в OFF | `postinst.sh` |
-| Medium | Hy2 `insecure=1` по умолчанию | `etc/config/rvpn` |
-| Medium | Нет автотестов fail-open / DNS / CGI auth | — |
-| Low | Широкий `googleusercontent.com` в VPN; мёртвый `watchdog_loop` ≠ живой inline-loop | lists / `watchdog.sh` |
+| Medium | TPROXY inbound всё ещё `0.0.0.0` (нужен firewall wan drop) | `singbox.sh` |
+| Low | Широкий `googleusercontent.com` в VPN | `vpn-domains.txt` |
+| Low | Полные интеграционные тесты на роутере (mock uci/nft) | `tools/` |
 
 ### Что уже хорошо
 
