@@ -6,7 +6,6 @@
 SB_BIN=/usr/bin/sing-box
 
 sb_build_json_array() {
-	# $1 = file, strips comments
 	awk '
 		/^[[:space:]]*#/ { next }
 		/^[[:space:]]*$/ { next }
@@ -41,10 +40,6 @@ sb_generate() {
 	[ -n "$tproxy" ] || tproxy=12345
 	fake=$(uci_get fakeip_inet4_range)
 	[ -n "$fake" ] || fake=198.18.0.0/15
-	api=$(uci_get clash_api)
-	[ -n "$api" ] || api=0.0.0.0:9090
-	api_host=${api%:*}
-	api_port=${api##*:}
 	ut_url=$(uci_get urltest_url)
 	[ -n "$ut_url" ] || ut_url=https://www.gstatic.com/generate_204
 	ut_iv=$(uci_get urltest_interval)
@@ -53,6 +48,10 @@ sb_generate() {
 	[ -n "$ut_tol" ] || ut_tol=100
 	ll=$(uci_get log_level)
 	[ -n "$ll" ] || ll=warn
+
+	clash_secret=$(ensure_clash_secret)
+	clash_secret_j=$(json_escape "$clash_secret")
+	ut_url_j=$(json_escape "$ut_url")
 
 	vpn_dom=$(sb_build_json_array "$RVPN_RULES/vpn-domains.txt")
 	games_dom=$(sb_build_json_array "$RVPN_RULES/games-domains.txt")
@@ -72,6 +71,8 @@ sb_generate() {
 		[ -n "$tag" ] || tag="$id"
 		server=$(uci -q get "rvpn.$id.server")
 		port=$(uci -q get "rvpn.$id.port")
+		tag_j=$(json_escape "$tag")
+		server_j=$(json_escape "$server")
 		case "$type" in
 		hysteria2)
 			pw=$(uci -q get "rvpn.$id.password")
@@ -79,8 +80,10 @@ sb_generate() {
 			[ -n "$sni" ] || sni="$server"
 			ins=$(uci -q get "rvpn.$id.insecure")
 			[ "$ins" = "1" ] && insecure=true || insecure=false
+			pw_j=$(json_escape "$pw")
+			sni_j=$(json_escape "$sni")
 			printf '{"type":"hysteria2","tag":"%s","server":"%s","server_port":%s,"password":"%s","tls":{"enabled":true,"server_name":"%s","insecure":%s}}\n' \
-				"$tag" "$server" "$port" "$pw" "$sni" "$insecure" >>"$outbounds_tmp"
+				"$tag_j" "$server_j" "$port" "$pw_j" "$sni_j" "$insecure" >>"$outbounds_tmp"
 			echo "$tag" >>"$tags_tmp"
 			;;
 		vless)
@@ -88,8 +91,12 @@ sb_generate() {
 			sni=$(uci -q get "rvpn.$id.sni")
 			pbk=$(uci -q get "rvpn.$id.reality_public_key")
 			sid=$(uci -q get "rvpn.$id.reality_short_id")
+			uuid_j=$(json_escape "$uuid")
+			sni_j=$(json_escape "$sni")
+			pbk_j=$(json_escape "$pbk")
+			sid_j=$(json_escape "$sid")
 			printf '{"type":"vless","tag":"%s","server":"%s","server_port":%s,"uuid":"%s","packet_encoding":"xudp","tls":{"enabled":true,"server_name":"%s","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"%s","short_id":"%s"}},"flow":"xtls-rprx-vision"}\n' \
-				"$tag" "$server" "$port" "$uuid" "$sni" "$pbk" "$sid" >>"$outbounds_tmp"
+				"$tag_j" "$server_j" "$port" "$uuid_j" "$sni_j" "$pbk_j" "$sid_j" >>"$outbounds_tmp"
 			echo "$tag" >>"$tags_tmp"
 			;;
 		esac
@@ -112,19 +119,17 @@ sb_generate() {
 	sep=
 	while IFS= read -r t; do
 		[ -n "$t" ] || continue
-		ut_out="$ut_out$sep\"$t\""
+		tj=$(json_escape "$t")
+		ut_out="$ut_out$sep\"$tj\""
 		sep=,
 	done <"$tags_tmp"
 	ut_out="$ut_out]"
 
-	obs="$obs,{\"type\":\"urltest\",\"tag\":\"rvpn-urltest\",\"outbounds\":$ut_out,\"url\":\"$ut_url\",\"interval\":\"$ut_iv\",\"tolerance\":$ut_tol}"
+	obs="$obs,{\"type\":\"urltest\",\"tag\":\"rvpn-urltest\",\"outbounds\":$ut_out,\"url\":\"$ut_url_j\",\"interval\":\"$ut_iv\",\"tolerance\":$ut_tol}"
 	obs="$obs,{\"type\":\"direct\",\"tag\":\"direct\"}"
 	obs="$obs]"
 
-	# ip_cidr route: fakeip + telegram/meta ranges
-	ip_route="$fake"
 	if [ "$vpn_cidr" != "[]" ] && [ -n "$vpn_cidr" ]; then
-		# merge: ["198.18..."] + cidrs without outer brackets
 		inner=$(echo "$vpn_cidr" | sed 's/^\[//;s/\]$//')
 		ip_route_json="[\"$fake\",$inner]"
 	else
@@ -136,8 +141,9 @@ sb_generate() {
   "log": {"level": "$ll", "timestamp": true},
   "experimental": {
     "clash_api": {
-      "external_controller": "$api_host:$api_port",
-      "access_control_allow_origin": ["*"],
+      "external_controller": "127.0.0.1:9090",
+      "secret": "$clash_secret_j",
+      "access_control_allow_origin": ["http://127.0.0.1", "http://192.168.1.1:81"],
       "access_control_allow_private_network": true
     },
     "cache_file": {
@@ -212,12 +218,12 @@ sb_start() {
 	vpn=$(uci_get vpn_enabled)
 	[ "$vpn" = "1" ] || return 0
 	sb_generate || return 1
-	killall -9 sing-box 2>/dev/null || true
+	sb_kill_ours
 	sleep 1
 	"$SB_BIN" run -c "$RVPN_SB_JSON" >/tmp/rvpn/sing-box.log 2>&1 &
 	echo $! >"$RVPN_RUN/sing-box.pid"
 	sleep 2
-	if ! pgrep -f 'sing-box.json' >/dev/null 2>&1; then
+	if [ -z "$(sb_pids)" ]; then
 		log "ERROR: sing-box failed to start"
 		tail -40 /tmp/rvpn/sing-box.log >>"$RVPN_LOG"
 		return 1
@@ -227,7 +233,7 @@ sb_start() {
 }
 
 sb_stop() {
-	killall -9 sing-box 2>/dev/null || true
+	sb_kill_ours
 	rm -f "$RVPN_RUN/sing-box.pid"
 	log "sing-box stopped"
 }

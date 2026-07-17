@@ -323,10 +323,34 @@
     font-size: 0.68rem;
     color: rgba(125, 143, 166, 0.55);
   }
+
+  .gate {
+    display: none;
+    max-width: 420px;
+    margin: 4rem auto;
+    padding: 0 1.25rem;
+  }
+  .gate.show { display: block; }
+  .gate h1 { font-family: Unbounded, sans-serif; font-size: 1.8rem; margin: 0 0 0.5rem; }
+  .gate p { color: var(--muted); margin: 0 0 1rem; font-size: 0.9rem; }
+  .gate input {
+    width: 100%; padding: 0.7rem 0.85rem; margin-bottom: 0.75rem;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+    font: inherit; border-radius: 4px;
+  }
+  .gate .hint { font-size: 0.75rem; color: var(--muted); margin-top: 0.75rem; word-break: break-all; }
+  .app.hidden { display: none; }
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="gate" id="gate">
+  <h1>Skvoz</h1>
+  <p>Введите UI-токен (один раз сохранится в браузере).</p>
+  <input id="token-input" type="password" autocomplete="current-password" placeholder="ui_secret">
+  <button class="btn" id="btn-unlock" type="button">Войти</button>
+  <p class="hint">На роутере: <code>uci get rvpn.main.ui_secret</code></p>
+</div>
+<div class="wrap app hidden" id="app">
 
   <section class="hero">
     <h1 class="brand">Skvoz</h1>
@@ -376,7 +400,7 @@
         <tbody>
           <tr><td>ya.ru, vk, банки, Рунет</td><td><span class="layer direct">DIRECT</span></td></tr>
           <tr><td>Steam, игровые серверы</td><td><span class="layer direct">DIRECT</span></td></tr>
-          <tr><td>YouTube, googlevideo</td><td><span class="layer zapret">zapret</span></td></tr>
+          <tr><td>YouTube, превью, иконки, community</td><td><span class="layer zapret">zapret</span></td></tr>
           <tr><td>hdrezka, rutracker</td><td><span class="layer zapret">zapret</span></td></tr>
           <tr><td>Telegram (+ CIDR)</td><td><span class="layer vpn">VPN</span></td></tr>
           <tr><td>Instagram, Facebook, WhatsApp</td><td><span class="layer vpn">VPN</span></td></tr>
@@ -400,6 +424,9 @@
 <script>
 (function () {
   const API = '/cgi-bin/rvpn.cgi';
+  const LS = 'skvoz_ui_token';
+  const gate = document.getElementById('gate');
+  const app = document.getElementById('app');
   const statusRow = document.getElementById('status-row');
   const swZapret = document.getElementById('sw-zapret');
   const swVpn = document.getElementById('sw-vpn');
@@ -408,9 +435,31 @@
   const logBox = document.getElementById('log-box');
   const logOut = document.getElementById('log-out');
 
+  function token() { return localStorage.getItem(LS) || ''; }
+
   async function api(query) {
-    const r = await fetch(API + '?' + query, { cache: 'no-store' });
-    return r.text();
+    const t = token();
+    const q = query + (query.indexOf('token=') >= 0 ? '' : (query ? '&' : '') + 'token=' + encodeURIComponent(t));
+    const r = await fetch(API + '?' + q, {
+      cache: 'no-store',
+      headers: t ? { 'X-Skvoz-Token': t } : {}
+    });
+    const text = await r.text();
+    if (r.status === 401 || text.indexOf('"unauthorized"') >= 0) {
+      localStorage.removeItem(LS);
+      showGate();
+      throw new Error('unauthorized');
+    }
+    return text;
+  }
+
+  function showGate() {
+    gate.classList.add('show');
+    app.classList.add('hidden');
+  }
+  function showApp() {
+    gate.classList.remove('show');
+    app.classList.remove('hidden');
   }
 
   function badge(text, kind) {
@@ -522,8 +571,32 @@
     }
   });
 
-  refresh();
-  setInterval(refresh, 15000);
+  document.getElementById('btn-unlock').addEventListener('click', async function () {
+    const v = document.getElementById('token-input').value.trim();
+    if (!v) return;
+    localStorage.setItem(LS, v);
+    try {
+      await api('status');
+      showApp();
+      refresh();
+    } catch (e) {
+      localStorage.removeItem(LS);
+      alert('Неверный токен');
+    }
+  });
+
+  async function boot() {
+    if (!token()) { showGate(); return; }
+    try {
+      await api('status');
+      showApp();
+      refresh();
+      setInterval(refresh, 15000);
+    } catch (e) {
+      showGate();
+    }
+  }
+  boot();
 })();
 </script>
 </body>

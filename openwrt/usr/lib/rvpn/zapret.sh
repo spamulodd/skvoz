@@ -1,5 +1,5 @@
 #!/bin/sh
-# zapret / nfqws wrapper — DPI bypass for dpi.txt hostlist
+# zapret / nfqws — DPI bypass for dpi.txt (YouTube thumbs/icons included)
 
 . /usr/lib/rvpn/common.sh
 
@@ -23,23 +23,15 @@ zapret_bin() {
 zapret_ensure_bin() {
 	b=$(zapret_bin)
 	[ -n "$b" ] && [ -x "$b" ] && return 0
-
 	mkdir -p "$ZAP_DIR"
-	# mipsel_24kc OpenWrt — try common release asset names
-	# Prefer already-downloaded copy from deploy
-	for cand in \
-		"$ZAP_DIR/nfqws" \
-		/usr/share/rvpn/bin/nfqws \
-		/tmp/rvpn-nfqws
-	do
+	for cand in "$ZAP_DIR/nfqws" /usr/share/rvpn/bin/nfqws /tmp/rvpn-nfqws; do
 		if [ -f "$cand" ]; then
 			cp -f "$cand" "$NFQWS_BIN"
 			chmod +x "$NFQWS_BIN"
 			[ -x "$NFQWS_BIN" ] && return 0
 		fi
 	done
-
-	log "WARN: nfqws binary missing — place at $NFQWS_BIN (mipsel)"
+	log "WARN: nfqws binary missing — place at $NFQWS_BIN"
 	return 1
 }
 
@@ -56,7 +48,14 @@ zapret_start() {
 	killall nfqws 2>/dev/null || true
 	sleep 1
 
-	# Strategies known to work on many RU ISPs; hostlist limits CPU
+	# Stronger TLS fake helps YT image hosts under DPI
+	fake_tls=""
+	[ -f /opt/zapret/files/fake/tls_clienthello_www_google_com.bin ] && \
+		fake_tls="--dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin"
+	[ -z "$fake_tls" ] && [ -f /usr/share/rvpn/fake/tls_clienthello_www_google_com.bin ] && \
+		fake_tls="--dpi-desync-fake-tls=/usr/share/rvpn/fake/tls_clienthello_www_google_com.bin"
+
+	# shellcheck disable=SC2086
 	"$b" \
 		--daemon \
 		--pidfile="$ZAP_PID" \
@@ -66,7 +65,8 @@ zapret_start() {
 		--dpi-desync=fake,multisplit \
 		--dpi-desync-split-pos=1,midsld \
 		--dpi-desync-fooling=md5sig \
-		--dpi-desync-repeats=6 \
+		--dpi-desync-repeats=8 \
+		$fake_tls \
 		>/tmp/rvpn/nfqws.log 2>&1
 
 	sleep 2
@@ -74,7 +74,6 @@ zapret_start() {
 		log "nfqws started qnum=$qnum"
 		return 0
 	fi
-	# also accept pidfile
 	if [ -f "$ZAP_PID" ] && kill -0 "$(cat "$ZAP_PID")" 2>/dev/null; then
 		log "nfqws started qnum=$qnum (pidfile)"
 		return 0
@@ -87,7 +86,6 @@ zapret_start() {
 zapret_stop() {
 	[ -f "$ZAP_PID" ] && kill "$(cat "$ZAP_PID")" 2>/dev/null || true
 	killall nfqws 2>/dev/null || true
-	pkill -f '/opt/rvpn/nfqws' 2>/dev/null || true
 	rm -f "$ZAP_PID"
 	log "nfqws stopped"
 }

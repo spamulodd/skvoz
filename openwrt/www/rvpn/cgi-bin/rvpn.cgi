@@ -1,6 +1,4 @@
 #!/bin/sh
-# Content-Type: text/plain or application/json
-
 . /usr/lib/rvpn/common.sh
 . /usr/lib/rvpn/health.sh
 
@@ -13,31 +11,47 @@ get_arg() {
 
 json_hdr() {
 	echo "Content-Type: application/json; charset=utf-8"
-	echo "Access-Control-Allow-Origin: *"
+	echo "Cache-Control: no-store"
 	echo ""
 }
 
 text_hdr() {
 	echo "Content-Type: text/plain; charset=utf-8"
-	echo "Access-Control-Allow-Origin: *"
+	echo "Cache-Control: no-store"
 	echo ""
 }
 
+require_auth() {
+	# skip auth for nothing — all mutating + status need token
+	want=$(ensure_ui_secret)
+	got=$(get_arg token)
+	[ -z "$got" ] && got=$HTTP_X_SKVOZ_TOKEN
+	if [ -z "$got" ] || [ "$got" != "$want" ]; then
+		echo "Status: 401 Unauthorized"
+		json_hdr
+		echo '{"error":"unauthorized"}'
+		exit 0
+	fi
+}
+
 case "$cmd" in
+# first-time helper: returns whether token required (always) — no secret leak
+ping_public)
+	json_hdr
+	echo '{"ok":1,"auth":1,"name":"Skvoz"}'
+	;;
 status)
+	require_auth
 	json_hdr
 	health_status_json
 	;;
 set)
+	require_auth
 	layer=$(get_arg layer)
-	on=$(get_arg on)
+	on=$(norm_bool "$(get_arg on)")
 	case "$layer" in
-	zapret)
-		uci set rvpn.main.zapret_enabled="${on:-0}"
-		;;
-	vpn)
-		uci set rvpn.main.vpn_enabled="${on:-0}"
-		;;
+	zapret) uci set rvpn.main.zapret_enabled="$on" ;;
+	vpn) uci set rvpn.main.vpn_enabled="$on" ;;
 	*)
 		text_hdr
 		echo "bad layer"
@@ -45,31 +59,39 @@ set)
 		;;
 	esac
 	uci commit rvpn
-	/etc/init.d/rvpn restart
+	# async restart — do not block uhttpd
+	( /etc/init.d/rvpn restart >>"$RVPN_LOG" 2>&1 ) &
 	json_hdr
-	health_status_json
+	printf '{"ok":1,"async":1,"zapret_enabled":%s,"vpn_enabled":%s}\n' \
+		"$(uci_get zapret_enabled)" "$(uci_get vpn_enabled)"
 	;;
 stop)
+	require_auth
+	( /etc/init.d/rvpn stop >>"$RVPN_LOG" 2>&1 ) &
 	text_hdr
-	/etc/init.d/rvpn stop
 	echo OK
 	;;
 restart)
+	require_auth
+	( /etc/init.d/rvpn restart >>"$RVPN_LOG" 2>&1 ) &
 	text_hdr
-	/etc/init.d/rvpn restart
 	echo OK
 	;;
 log)
+	require_auth
 	text_hdr
 	tail -n 120 "$RVPN_LOG" 2>/dev/null
 	;;
 ping)
+	require_auth
 	json_hdr
-	api=$(uci_get clash_api)
-	[ -n "$api" ] || api="127.0.0.1:9090"
+	api=$(clash_api_local)
+	sec=$(uci_get clash_secret)
+	[ -n "$sec" ] || sec=$(ensure_clash_secret)
 	ut_url=$(uci_get urltest_url)
 	[ -n "$ut_url" ] || ut_url="https://www.gstatic.com/generate_204"
 	curl -sS --connect-timeout 2 --max-time 8 \
+		-H "Authorization: Bearer $sec" \
 		-G "http://${api}/proxies/rvpn-urltest/delay" \
 		--data-urlencode "url=${ut_url}" \
 		--data "timeout=5000" 2>/dev/null || echo '{"delay":0}'

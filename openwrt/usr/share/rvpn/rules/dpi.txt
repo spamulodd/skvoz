@@ -1,14 +1,32 @@
-# Zapret DPI hostlist — real IPs, no VPN
+# Zapret DPI hostlist — real IPs (YouTube media/UI + trackers)
+# YouTube core
 youtube.com
 youtu.be
-googlevideo.com
-ytimg.com
-ggpht.com
 youtube-nocookie.com
 youtubekids.com
 youtubei.googleapis.com
+youtube.googleapis.com
+www.youtube.com
+m.youtube.com
+# Video CDN
+googlevideo.com
+wide-youtube.l.google.com
+# Thumbnails / channel avatars / community images
+ytimg.com
+i.ytimg.com
+s.ytimg.com
+ggpht.com
 yt3.ggpht.com
+googleusercontent.com
+yt3.googleusercontent.com
+lh3.googleusercontent.com
+lh4.googleusercontent.com
+lh5.googleusercontent.com
+lh6.googleusercontent.com
+# YT player / metrics helpers often needed for UI chrome
 jnn-pa.googleapis.com
+play.google.com
+# Cinema / trackers
 hdrezka.ag
 hdrezka.me
 hdrezka.tv

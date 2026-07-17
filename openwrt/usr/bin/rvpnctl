@@ -14,6 +14,8 @@ status)
 	echo "---"
 	echo "zapret_enabled=$(uci -q get rvpn.main.zapret_enabled)"
 	echo "vpn_enabled=$(uci -q get rvpn.main.vpn_enabled)"
+	echo "ui_secret=$(uci -q get rvpn.main.ui_secret)"
+	echo "disable_quic=$(uci -q get rvpn.main.disable_quic)"
 	pgrep -a nfqws 2>/dev/null || echo "nfqws: not running"
 	pgrep -af '/tmp/rvpn/sing-box.json' 2>/dev/null || echo "sing-box: not running"
 	nft list tables 2>/dev/null | grep rvpn || echo "nft: no rvpn tables"

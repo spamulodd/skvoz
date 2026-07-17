@@ -24,13 +24,16 @@ FakeIP только для VPN-доменов; Telegram DC/Meta IP уходят 
 1. Скопируй дерево `openwrt/` на роутер (см. `tools/deploy.ps1`).
 2. Пропиши ноду в `/etc/config/rvpn` (пароль/сервер).
 3. Положи `nfqws` в `/opt/rvpn/nfqws`.
-4. UI: `http://ROUTER:81/` — тумблеры по умолчанию OFF.
+4. UI: `http://ROUTER:81/` — нужен `ui_secret` (`uci get rvpn.main.ui_secret`).
+5. Clash API только на `127.0.0.1:9090` + secret; CGI требует токен.
 
 ```sh
 rvpnctl status
 rvpnctl enable-zapret
 rvpnctl enable-vpn
 ```
+
+YouTube превью/иконки: dpi-hostlist + `disable_quic=1` (UDP/443 с LAN режется, клиент идёт по TCP через zapret).
 
 ## Лицензия
 

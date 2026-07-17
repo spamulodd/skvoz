@@ -1,5 +1,5 @@
 #!/bin/sh /etc/rc.common
-# Skvoz / rvpn: zapret + selective sing-box VPN
+# Skvoz / rvpn
 
 START=99
 STOP=10
@@ -11,10 +11,13 @@ USE_PROCD=0
 . /usr/lib/rvpn/singbox.sh
 . /usr/lib/rvpn/zapret.sh
 . /usr/lib/rvpn/health.sh
+. /usr/lib/rvpn/watchdog.sh
 
 start_service() {
 	mkdir -p "$RVPN_RUN"
 	log "start requested"
+	ensure_ui_secret >/dev/null
+	ensure_clash_secret >/dev/null
 	health_preflight || return 1
 
 	zap=$(uci_get zapret_enabled)
@@ -23,6 +26,7 @@ start_service() {
 	if [ "$zap" != "1" ] && [ "$vpn" != "1" ]; then
 		log "both layers off"
 		echo stopped >"$RVPN_STATE"
+		watchdog_stop
 		return 0
 	fi
 
@@ -43,25 +47,29 @@ start_service() {
 		fi
 	fi
 
+	nft_apply_quic
+
 	if ! wan_ok; then
 		log "CRITICAL: WAN broke — cleanup"
 		stop_service
 		return 1
 	fi
 	echo running >"$RVPN_STATE"
+	watchdog_start
 	log "start done"
 }
 
 stop_service() {
 	log "stop requested"
-	# IMPORTANT: drop nft queues BEFORE killing nfqws (otherwise delete can hang)
+	watchdog_stop
 	nft_flush_zapret
 	nft_flush_vpn
+	nft_flush_quic
 	ip rule del fwmark 0x1 lookup 100 2>/dev/null || true
 	ip route flush table 100 2>/dev/null || true
 	kill -9 "$(cat "$RVPN_RUN/nfqws.pid" 2>/dev/null)" 2>/dev/null || true
 	killall -9 nfqws 2>/dev/null || true
-	killall -9 sing-box 2>/dev/null || true
+	sb_kill_ours
 	rm -f "$RVPN_RUN/sing-box.pid" "$RVPN_RUN/nfqws.pid" 2>/dev/null || true
 	dns_restore
 	echo stopped >"$RVPN_STATE"

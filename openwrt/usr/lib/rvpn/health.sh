@@ -9,10 +9,17 @@ health_preflight() {
 	return 0
 }
 
+clash_auth_hdr() {
+	sec=$(uci_get clash_secret)
+	[ -n "$sec" ] || sec=$(ensure_clash_secret)
+	echo "Authorization: Bearer $sec"
+}
+
 clash_proxy_json() {
-	api=$(uci_get clash_api)
-	[ -n "$api" ] || api="127.0.0.1:9090"
-	curl -sS --connect-timeout 2 --max-time 4 "http://${api}/proxies/rvpn-urltest" 2>/dev/null
+	api=$(clash_api_local)
+	curl -sS --connect-timeout 2 --max-time 4 \
+		-H "$(clash_auth_hdr)" \
+		"http://${api}/proxies/rvpn-urltest" 2>/dev/null
 }
 
 clash_node_now() {
@@ -35,14 +42,10 @@ health_status_json() {
 	if pgrep -f '/opt/rvpn/nfqws' >/dev/null 2>&1 || pgrep -x nfqws >/dev/null 2>&1; then
 		zap_run=1
 	fi
-	if pgrep -f '/tmp/rvpn/sing-box.json' >/dev/null 2>&1; then
-		vpn_run=1
-	fi
+	[ -n "$(sb_pids)" ] && vpn_run=1
 	wan=0
 	wan_ok && wan=1
 	mem=$(awk '/MemAvailable/{print $2}' /proc/meminfo 2>/dev/null)
-	api=$(uci_get clash_api)
-	[ -n "$api" ] || api="127.0.0.1:9090"
 
 	node_now=""
 	node_delay=0
@@ -52,7 +55,8 @@ health_status_json() {
 		node_delay=$(clash_node_delay_ms "$proxy_body")
 	fi
 	[ -n "$node_now" ] || node_now="—"
+	node_now_j=$(json_escape "$node_now")
 
-	printf '{"zapret_enabled":%s,"vpn_enabled":%s,"zapret_running":%s,"vpn_running":%s,"wan_ok":%s,"mem_available_kb":%s,"clash_api":"%s","node_now":"%s","node_delay_ms":%s}\n' \
-		"${zap:-0}" "${vpn:-0}" "$zap_run" "$vpn_run" "$wan" "${mem:-0}" "$api" "$node_now" "${node_delay:-0}"
+	printf '{"zapret_enabled":%s,"vpn_enabled":%s,"zapret_running":%s,"vpn_running":%s,"wan_ok":%s,"mem_available_kb":%s,"clash_api":"127.0.0.1:9090","node_now":"%s","node_delay_ms":%s}\n' \
+		"${zap:-0}" "${vpn:-0}" "$zap_run" "$vpn_run" "$wan" "${mem:-0}" "$node_now_j" "${node_delay:-0}"
 }
