@@ -1,4 +1,4 @@
-# Always DIRECT
+# Always DIRECT — game platforms, launchers, anti-cheat
 steampowered.com
 steamcommunity.com
 steamstatic.com
@@ -28,3 +28,19 @@ esportal.com
 boosteroid.com
 geforce.com
 nvidia.com
+rockstargames.com
+socialclub.rockstargames.com
+gog.com
+bethesda.net
+activision.com
+callofduty.com
+bungie.net
+hoyoverse.com
+mihoyo.com
+wargaming.net
+worldoftanks.com
+pathofexile.com
+escapefromtarkov.com
+pubg.com
+fortnite.com
+warframe.com

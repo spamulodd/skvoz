@@ -1,0 +1,13 @@
+# Common public DoH resolver IPs (IPv4 /32)
+# Google Public DNS (covers dns.google)
+8.8.8.8/32
+8.8.4.4/32
+# Cloudflare
+1.1.1.1/32
+1.0.0.1/32
+# Quad9
+9.9.9.9/32
+149.112.112.112/32
+# AdGuard DNS
+94.140.14.14/32
+94.140.15.15/32

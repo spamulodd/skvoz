@@ -1,35 +1,33 @@
-# Zapret DPI hostlist — real IPs (YouTube media/UI + trackers)
-# YouTube core
+# Zapret DPI hostlist — real IPs, nfqws on WAN (NOT hard IP bans)
+# YouTube HTML / player / video CDN — keep on zapret for speed
 youtube.com
 youtu.be
+yt.be
 youtube-nocookie.com
 youtubekids.com
 youtubei.googleapis.com
 youtube.googleapis.com
 www.youtube.com
 m.youtube.com
-# Video CDN
+music.youtube.com
+studio.youtube.com
+tv.youtube.com
+kids.youtube.com
 googlevideo.com
 wide-youtube.l.google.com
-# Thumbnails / channel avatars / community images
-ytimg.com
-i.ytimg.com
-s.ytimg.com
-ggpht.com
-yt3.ggpht.com
-googleusercontent.com
-yt3.googleusercontent.com
-lh3.googleusercontent.com
-lh4.googleusercontent.com
-lh5.googleusercontent.com
-lh6.googleusercontent.com
-# YT player / metrics helpers often needed for UI chrome
+youtube-ui.l.google.com
+# Player / metrics helpers
 jnn-pa.googleapis.com
 play.google.com
 # Cinema / trackers
 hdrezka.ag
 hdrezka.me
 hdrezka.tv
+hdrezka.la
+hdrezka.fi
+hdrezka.cc
 rezka.ag
 rutracker.org
+rutracker.net
+rutracker.nl
 nnmclub.to

@@ -33,7 +33,6 @@ start_service() {
 	if [ "$vpn" = "1" ]; then
 		if sb_start; then
 			nft_apply_vpn || log "WARN: nft vpn failed"
-			dns_apply
 		else
 			log "VPN start failed — fail-open"
 		fi
@@ -47,7 +46,10 @@ start_service() {
 		fi
 	fi
 
+	# DNS filters + FakeIP upstream; DoH/QUIC shields (lists from git)
+	dns_apply
 	nft_apply_quic
+	nft_apply_doh
 
 	if ! wan_ok; then
 		log "CRITICAL: WAN broke — cleanup"
@@ -65,6 +67,7 @@ stop_service() {
 	nft_flush_zapret
 	nft_flush_vpn
 	nft_flush_quic
+	nft_flush_doh
 	ip rule del fwmark 0x1 lookup 100 2>/dev/null || true
 	ip route flush table 100 2>/dev/null || true
 	kill -9 "$(cat "$RVPN_RUN/nfqws.pid" 2>/dev/null)" 2>/dev/null || true

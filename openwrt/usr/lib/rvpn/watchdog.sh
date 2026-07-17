@@ -28,11 +28,15 @@ watchdog_start() {
 			sleep 15
 			vpn=$(uci_get vpn_enabled)
 			[ "$vpn" = "1" ] || continue
-			[ -f /tmp/rvpn/dns.applied ] || continue
+			# only fail-open FakeIP hijack; filter_aaaa-only mode is fine without sing-box
+			grep -q fakeip /tmp/rvpn/dns.applied 2>/dev/null || continue
 			if [ -z "$(sb_pids)" ]; then
 				log "WATCHDOG: sing-box dead — DNS/nft fail-open"
 				nft_flush_vpn
 				dns_restore
+				# re-apply aaaa filter if zapret still on
+				. /usr/lib/rvpn/dns.sh
+				dns_apply
 			fi
 		done
 	' >/dev/null 2>&1 &

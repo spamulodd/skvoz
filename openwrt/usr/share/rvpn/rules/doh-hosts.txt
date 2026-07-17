@@ -1,0 +1,29 @@
+# Browser DoH endpoints — reference list (domains used for DNS-over-HTTPS)
+# Router DNS (dnsmasq → sing-box) should win; these are for audit / future nft rules.
+# Google
+dns.google
+dns.google.com
+dns64.dns.google
+# Cloudflare
+dns.cloudflare.com
+cloudflare-dns.com
+one.one.one.one
+security.cloudflare-dns.com
+family.cloudflare-dns.com
+mozilla.cloudflare-dns.com
+chrome.cloudflare-dns.com
+# Quad9
+dns.quad9.net
+# AdGuard
+dns.adguard.com
+dns.adguard-dns.com
+# OpenDNS / Cisco
+doh.opendns.com
+# CleanBrowsing
+doh.cleanbrowsing.org
+# NextDNS
+dns.nextdns.io
+# Firefox application DNS
+use-application-dns.net
+# Microsoft Edge / Windows
+microsoft-dns.com

@@ -1,5 +1,5 @@
 #!/bin/sh
-# zapret / nfqws — DPI bypass for dpi.txt (YouTube thumbs/icons included)
+# zapret / nfqws — DPI bypass for dpi.txt (YouTube video/player, trackers)
 
 . /usr/lib/rvpn/common.sh
 

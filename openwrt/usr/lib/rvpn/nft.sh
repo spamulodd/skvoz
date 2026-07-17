@@ -17,11 +17,73 @@ nft_flush_quic() {
 	nft list table inet rvpn_quic >/dev/null 2>&1 && nft delete table inet rvpn_quic || true
 }
 
+nft_flush_doh() {
+	nft list table inet rvpn_doh >/dev/null 2>&1 && nft delete table inet rvpn_doh || true
+}
+
 nft_flush_all() {
 	nft_flush_zapret
 	nft_flush_vpn
 	nft_flush_quic
+	nft_flush_doh
 	log "nft flushed"
+}
+
+nft_build_doh_elements() {
+	f="$RVPN_RULES/doh-cidr.txt"
+	[ -f "$f" ] || return 0
+	awk '
+		/^[[:space:]]*#/ { next }
+		/^[[:space:]]*$/ { next }
+		{
+			gsub(/[[:space:]]/, "")
+			if (length($0) > 0) {
+				if (n++) printf ", "
+				printf "%s", $0
+			}
+		}
+	' "$f"
+}
+
+nft_apply_doh() {
+	# Force browsers back to router DNS (block DoH/DoT)
+	zap=$(uci_get zapret_enabled)
+	vpn=$(uci_get vpn_enabled)
+	nft_flush_doh
+	if [ "$zap" != "1" ] && [ "$vpn" != "1" ]; then
+		return 0
+	fi
+	elems=$(nft_build_doh_elements)
+	set_block=""
+	cidr_rules=""
+	if [ -n "$elems" ]; then
+		set_block="
+	set doh_cidr {
+		type ipv4_addr
+		flags interval
+		auto-merge
+		elements = { $elems }
+	}"
+		cidr_rules="
+		iifname \"br-lan\" ip daddr @doh_cidr tcp dport 443 reject
+		iifname \"br-lan\" ip daddr @doh_cidr udp dport 443 reject"
+	fi
+	if nft -f - <<EOF
+table inet rvpn_doh {
+$set_block
+	chain prerouting {
+		type filter hook prerouting priority -160; policy accept;
+		iifname "br-lan" meta l4proto tcp tcp dport 853 reject
+		iifname "br-lan" meta l4proto udp udp dport 853 reject
+$cidr_rules
+	}
+}
+EOF
+	then
+		log "nft DoH/DoT block on br-lan"
+	else
+		log "WARN: nft doh apply failed"
+	fi
 }
 
 nft_build_cidr_elements() {
