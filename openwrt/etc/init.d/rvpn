@@ -1,0 +1,77 @@
+#!/bin/sh /etc/rc.common
+# Skvoz / rvpn: zapret + selective sing-box VPN
+
+START=99
+STOP=10
+USE_PROCD=0
+
+. /usr/lib/rvpn/common.sh
+. /usr/lib/rvpn/dns.sh
+. /usr/lib/rvpn/nft.sh
+. /usr/lib/rvpn/singbox.sh
+. /usr/lib/rvpn/zapret.sh
+. /usr/lib/rvpn/health.sh
+
+start_service() {
+	mkdir -p "$RVPN_RUN"
+	log "start requested"
+	health_preflight || return 1
+
+	zap=$(uci_get zapret_enabled)
+	vpn=$(uci_get vpn_enabled)
+
+	if [ "$zap" != "1" ] && [ "$vpn" != "1" ]; then
+		log "both layers off"
+		echo stopped >"$RVPN_STATE"
+		return 0
+	fi
+
+	if [ "$vpn" = "1" ]; then
+		if sb_start; then
+			nft_apply_vpn || log "WARN: nft vpn failed"
+			dns_apply
+		else
+			log "VPN start failed — fail-open"
+		fi
+	fi
+
+	if [ "$zap" = "1" ]; then
+		if zapret_start; then
+			nft_apply_zapret || log "WARN: nft zapret failed"
+		else
+			log "zapret start failed"
+		fi
+	fi
+
+	if ! wan_ok; then
+		log "CRITICAL: WAN broke — cleanup"
+		stop_service
+		return 1
+	fi
+	echo running >"$RVPN_STATE"
+	log "start done"
+}
+
+stop_service() {
+	log "stop requested"
+	# IMPORTANT: drop nft queues BEFORE killing nfqws (otherwise delete can hang)
+	nft_flush_zapret
+	nft_flush_vpn
+	ip rule del fwmark 0x1 lookup 100 2>/dev/null || true
+	ip route flush table 100 2>/dev/null || true
+	kill -9 "$(cat "$RVPN_RUN/nfqws.pid" 2>/dev/null)" 2>/dev/null || true
+	killall -9 nfqws 2>/dev/null || true
+	killall -9 sing-box 2>/dev/null || true
+	rm -f "$RVPN_RUN/sing-box.pid" "$RVPN_RUN/nfqws.pid" 2>/dev/null || true
+	dns_restore
+	echo stopped >"$RVPN_STATE"
+	log "stop done (fail-open)"
+}
+
+start() { start_service; }
+stop() { stop_service; }
+restart() {
+	stop_service
+	sleep 1
+	start_service
+}

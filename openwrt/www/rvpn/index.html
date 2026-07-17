@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skvoz</title>
+<link rel="preconnect" href="https://fonts.bunny.net">
+<link href="https://fonts.bunny.net/css?family=unbounded:500,700|ibm-plex-sans:400,500,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-deep: #070b10;
+    --bg-mid: #0e1520;
+    --ink: #e4eaf0;
+    --muted: #7d8fa6;
+    --line: rgba(148, 176, 204, 0.14);
+    --teal: #1ec4a8;
+    --teal-dim: rgba(30, 196, 168, 0.18);
+    --sky: #5eb4ff;
+    --ok: #42d392;
+    --warn: #d4a843;
+    --bad: #e06b6b;
+    --surface: rgba(14, 21, 32, 0.72);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    color: var(--ink);
+    font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+    font-size: 15px;
+    line-height: 1.45;
+    background-color: var(--bg-deep);
+    background-image:
+      radial-gradient(1200px 600px at 85% -15%, rgba(30, 80, 110, 0.35) 0%, transparent 55%),
+      radial-gradient(900px 500px at -5% 20%, rgba(20, 120, 100, 0.22) 0%, transparent 50%),
+      linear-gradient(165deg, #0a1018 0%, var(--bg-deep) 40%, #0b1219 100%);
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.045;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 180px 180px;
+    z-index: 0;
+  }
+
+  .wrap {
+    position: relative;
+    z-index: 1;
+    max-width: 640px;
+    margin: 0 auto;
+    padding: clamp(1.5rem, 5vw, 2.75rem) 1.25rem 3rem;
+  }
+
+  /* —— hero viewport —— */
+  .hero {
+    min-height: min(88vh, 720px);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1.35rem;
+    animation: hero-in 0.55s ease-out both;
+  }
+
+  @keyframes hero-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .brand {
+    font-family: "Unbounded", "Segoe UI Variable", "Trebuchet MS", sans-serif;
+    font-size: clamp(2.4rem, 9vw, 3.6rem);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    margin: 0;
+    background: linear-gradient(120deg, var(--ink) 20%, var(--teal) 90%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .tagline {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.92rem;
+    max-width: 34ch;
+  }
+
+  .status-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    min-height: 1.6rem;
+    transition: opacity 0.35s ease;
+  }
+
+  .status-row.loading { opacity: 0.45; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.22rem 0.55rem;
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    border-radius: 3px;
+    transition: border-color 0.25s ease, color 0.25s ease;
+  }
+
+  .badge::before {
+    content: "";
+    width: 5px;
+    height: 5px;
+    border-radius: 1px;
+    background: var(--muted);
+  }
+
+  .badge.ok { color: var(--ok); border-color: rgba(66, 211, 146, 0.35); }
+  .badge.ok::before { background: var(--ok); }
+  .badge.bad { color: var(--bad); border-color: rgba(224, 107, 107, 0.35); }
+  .badge.bad::before { background: var(--bad); }
+  .badge.neutral { color: var(--muted); }
+  .badge.neutral::before { background: var(--sky); opacity: 0.6; }
+
+  .toggles {
+    display: grid;
+    gap: 0.65rem;
+    margin-top: 0.25rem;
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.025) 0%, transparent 60%), var(--surface);
+  }
+
+  .toggle-row h2 {
+    margin: 0;
+    font-size: 0.98rem;
+    font-weight: 600;
+  }
+
+  .toggle-row p {
+    margin: 0.15rem 0 0;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+
+  .switch {
+    position: relative;
+    flex: 0 0 auto;
+    width: 48px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: #1a2430;
+    cursor: pointer;
+    transition: background 0.22s ease, border-color 0.22s ease;
+  }
+
+  .switch:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+  .switch.on {
+    background: var(--teal-dim);
+    border-color: rgba(30, 196, 168, 0.45);
+  }
+
+  .switch i {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 3px;
+    background: #c8d4de;
+    transition: transform 0.22s ease, background 0.22s ease;
+  }
+
+  .switch.on i {
+    transform: translateX(20px);
+    background: var(--teal);
+  }
+
+  .switch.busy { opacity: 0.55; pointer-events: none; }
+
+  /* —— below fold —— */
+  .panel {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+  }
+
+  .node-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 1rem;
+    margin-bottom: 1rem;
+    font-size: 0.85rem;
+  }
+
+  .node-line .label { color: var(--muted); }
+  .node-line .name { font-weight: 600; color: var(--sky); font-family: "IBM Plex Sans", monospace; }
+  .node-line .latency { color: var(--teal); }
+  .node-line .latency.pending { color: var(--muted); }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  button.btn {
+    appearance: none;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 0.5rem 0.85rem;
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  }
+
+  button.btn:hover {
+    border-color: rgba(94, 180, 255, 0.45);
+    color: var(--sky);
+    background: rgba(94, 180, 255, 0.06);
+  }
+
+  button.btn:active { transform: translateY(1px); }
+  button.btn.danger:hover { border-color: rgba(224, 107, 107, 0.5); color: var(--bad); background: rgba(224, 107, 107, 0.06); }
+
+  .matrix {
+    margin-top: 1.25rem;
+    font-size: 0.78rem;
+  }
+
+  .matrix h3 {
+    margin: 0 0 0.5rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+
+  .matrix table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .matrix th,
+  .matrix td {
+    text-align: left;
+    padding: 0.38rem 0.4rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .matrix th { color: var(--muted); font-weight: 500; }
+
+  .layer {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .layer.direct { color: var(--muted); }
+  .layer.zapret { color: var(--warn); }
+  .layer.vpn { color: var(--sky); }
+
+  .log-box {
+    margin-top: 1rem;
+    display: none;
+  }
+
+  .log-box.open { display: block; animation: fade-in 0.3s ease; }
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  pre#log-out {
+    margin: 0;
+    padding: 0.85rem;
+    max-height: 260px;
+    overflow: auto;
+    font-size: 0.72rem;
+    line-height: 1.45;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.35);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .foot {
+    margin-top: 2rem;
+    font-size: 0.68rem;
+    color: rgba(125, 143, 166, 0.55);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <section class="hero">
+    <h1 class="brand">Skvoz</h1>
+    <p class="tagline">Сквозь DPI · Рунет и игры напрямую · hard-block через VPN</p>
+
+    <div class="status-row" id="status-row" aria-live="polite"></div>
+
+    <div class="toggles">
+      <div class="toggle-row">
+        <div>
+          <h2>Zapret (DPI)</h2>
+          <p>YouTube, Google, hdrezka, rutracker</p>
+        </div>
+        <button class="switch" id="sw-zapret" type="button" role="switch" aria-checked="false" aria-label="Zapret"><i></i></button>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <h2>VPN (hard-block)</h2>
+          <p>Telegram, Instagram, Discord, TikTok, AI, news</p>
+        </div>
+        <button class="switch" id="sw-vpn" type="button" role="switch" aria-checked="false" aria-label="VPN"><i></i></button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="node-line">
+      <span class="label">Узел</span>
+      <span class="name" id="node-name">—</span>
+      <span class="latency pending" id="node-latency">— ms</span>
+    </div>
+
+    <div class="actions">
+      <button class="btn" id="btn-refresh" type="button">Обновить</button>
+      <button class="btn" id="btn-restart" type="button">Перезапуск</button>
+      <button class="btn danger" id="btn-stop" type="button">Стоп (fail-open)</button>
+      <button class="btn" id="btn-log" type="button">Лог</button>
+      <button class="btn" id="btn-ping" type="button">Ping узла</button>
+    </div>
+
+    <div class="matrix">
+      <h3>Маршрутизация</h3>
+      <table>
+        <thead>
+          <tr><th>Ресурс</th><th>Слой</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>ya.ru, vk, банки, Рунет</td><td><span class="layer direct">DIRECT</span></td></tr>
+          <tr><td>Steam, игровые серверы</td><td><span class="layer direct">DIRECT</span></td></tr>
+          <tr><td>YouTube, googlevideo</td><td><span class="layer zapret">zapret</span></td></tr>
+          <tr><td>hdrezka, rutracker</td><td><span class="layer zapret">zapret</span></td></tr>
+          <tr><td>Telegram (+ CIDR)</td><td><span class="layer vpn">VPN</span></td></tr>
+          <tr><td>Instagram, Facebook, WhatsApp</td><td><span class="layer vpn">VPN</span></td></tr>
+          <tr><td>Discord, TikTok, X</td><td><span class="layer vpn">VPN</span></td></tr>
+          <tr><td>Gemini, ChatGPT</td><td><span class="layer vpn">VPN</span></td></tr>
+          <tr><td>meduza, bbc, dw</td><td><span class="layer vpn">VPN</span></td></tr>
+          <tr><td>остальное</td><td><span class="layer direct">DIRECT</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="log-box" id="log-box">
+      <pre id="log-out">…</pre>
+    </div>
+
+    <p class="foot">rvpn · порт 81 · автообновление 15 с</p>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  const API = '/cgi-bin/rvpn.cgi';
+  const statusRow = document.getElementById('status-row');
+  const swZapret = document.getElementById('sw-zapret');
+  const swVpn = document.getElementById('sw-vpn');
+  const nodeName = document.getElementById('node-name');
+  const nodeLatency = document.getElementById('node-latency');
+  const logBox = document.getElementById('log-box');
+  const logOut = document.getElementById('log-out');
+
+  async function api(query) {
+    const r = await fetch(API + '?' + query, { cache: 'no-store' });
+    return r.text();
+  }
+
+  function badge(text, kind) {
+    const span = document.createElement('span');
+    span.className = 'badge ' + (kind || 'neutral');
+    span.textContent = text;
+    return span;
+  }
+
+  function setSwitch(el, on) {
+    el.classList.toggle('on', on);
+    el.setAttribute('aria-checked', on ? 'true' : 'false');
+  }
+
+  function renderStatus(j) {
+    statusRow.replaceChildren();
+    statusRow.appendChild(badge('WAN ' + (j.wan_ok ? 'OK' : 'DOWN'), j.wan_ok ? 'ok' : 'bad'));
+    statusRow.appendChild(badge('zapret ' + (j.zapret_running ? 'run' : 'off'), j.zapret_running ? 'ok' : 'bad'));
+    statusRow.appendChild(badge('VPN ' + (j.vpn_running ? 'run' : 'off'), j.vpn_running ? 'ok' : 'bad'));
+    const memMb = Math.round((j.mem_available_kb || 0) / 1024);
+    statusRow.appendChild(badge('RAM ' + memMb + ' MB', memMb > 32 ? 'ok' : 'bad'));
+
+    setSwitch(swZapret, j.zapret_enabled == 1);
+    setSwitch(swVpn, j.vpn_enabled == 1);
+
+    nodeName.textContent = j.node_now || '—';
+    const ms = j.node_delay_ms | 0;
+    nodeLatency.textContent = j.vpn_running && ms > 0 ? ms + ' ms' : (j.vpn_running ? '— ms' : 'VPN off');
+    nodeLatency.classList.toggle('pending', !(j.vpn_running && ms > 0));
+  }
+
+  async function refresh() {
+    statusRow.classList.add('loading');
+    try {
+      const raw = await api('status');
+      const j = JSON.parse(raw.trim().split('\n')[0]);
+      renderStatus(j);
+    } catch (e) {
+      statusRow.replaceChildren(badge('API error', 'bad'));
+    } finally {
+      statusRow.classList.remove('loading');
+    }
+  }
+
+  async function setLayer(layer, on, el) {
+    el.classList.add('busy');
+    try {
+      const raw = await api('set&layer=' + layer + '&on=' + (on ? '1' : '0'));
+      const j = JSON.parse(raw.trim().split('\n')[0]);
+      renderStatus(j);
+    } catch (e) {
+      await refresh();
+    } finally {
+      el.classList.remove('busy');
+    }
+  }
+
+  swZapret.addEventListener('click', function () {
+    setLayer('zapret', !swZapret.classList.contains('on'), swZapret);
+  });
+
+  swVpn.addEventListener('click', function () {
+    setLayer('vpn', !swVpn.classList.contains('on'), swVpn);
+  });
+
+  document.getElementById('btn-refresh').addEventListener('click', refresh);
+
+  document.getElementById('btn-restart').addEventListener('click', async function () {
+    this.disabled = true;
+    try {
+      await api('restart');
+      await refresh();
+    } finally {
+      this.disabled = false;
+    }
+  });
+
+  document.getElementById('btn-stop').addEventListener('click', async function () {
+    this.disabled = true;
+    try {
+      await api('stop');
+      await refresh();
+    } finally {
+      this.disabled = false;
+    }
+  });
+
+  document.getElementById('btn-log').addEventListener('click', async function () {
+    logBox.classList.add('open');
+    logOut.textContent = 'Загрузка…';
+    try {
+      logOut.textContent = await api('log') || '(пусто)';
+    } catch (e) {
+      logOut.textContent = 'Ошибка: ' + e;
+    }
+  });
+
+  document.getElementById('btn-ping').addEventListener('click', async function () {
+    nodeLatency.textContent = '…';
+    nodeLatency.classList.add('pending');
+    try {
+      const raw = await api('ping');
+      const j = JSON.parse(raw.trim());
+      const ms = j.delay | 0;
+      nodeLatency.textContent = ms > 0 ? ms + ' ms' : 'timeout';
+      nodeLatency.classList.toggle('pending', ms <= 0);
+    } catch (e) {
+      nodeLatency.textContent = 'ошибка';
+    }
+  });
+
+  refresh();
+  setInterval(refresh, 15000);
+})();
+</script>
+</body>
+</html>

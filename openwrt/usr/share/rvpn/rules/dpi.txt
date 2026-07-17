@@ -1,0 +1,17 @@
+# Zapret DPI hostlist — real IPs, no VPN
+youtube.com
+youtu.be
+googlevideo.com
+ytimg.com
+ggpht.com
+youtube-nocookie.com
+youtubekids.com
+youtubei.googleapis.com
+yt3.ggpht.com
+jnn-pa.googleapis.com
+hdrezka.ag
+hdrezka.me
+hdrezka.tv
+rezka.ag
+rutracker.org
+nnmclub.to
