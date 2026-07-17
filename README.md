@@ -140,6 +140,10 @@ sh tools/sync-telegram-cidr.sh   # обновить Telegram CIDR из official
 
 При падении sing-box watchdog снимает FakeIP-hijack DNS, чтобы не оставить клиентов без интернета. Остановка: nft flush **до** kill процессов.
 
+## Roadmap
+
+Идеи для других пользователей и долги code review: **[ROADMAP.md](ROADMAP.md)**.
+
 ## Лицензия
 
 MIT — см. [LICENSE](LICENSE).
