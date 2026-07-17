@@ -194,8 +194,6 @@ sb_generate() {
       {"protocol": "dns", "action": "hijack-dns"},
       {"ip_is_private": true, "outbound": "direct"},
       {"domain_suffix": $games_dom, "outbound": "direct"},
-      {"network": "udp", "port": 443, "domain_suffix": $vpn_dom, "action": "reject"},
-      {"network": "udp", "port": 443, "ip_cidr": $ip_route_json, "action": "reject"},
       {"domain_suffix": $vpn_dom, "outbound": "rvpn-urltest"},
       {"ip_cidr": $ip_route_json, "outbound": "rvpn-urltest"}
     ],

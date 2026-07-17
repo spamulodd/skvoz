@@ -1,4 +1,33 @@
-# Hard-block → VPN (FakeIP). Video stays on zapret (dpi.txt), NOT here.
+# Hard-block → VPN (FakeIP). Shipped lists — no manual shunt.
+# --- YouTube (full stack: page + API + video + thumbs) ---
+youtube.com
+youtu.be
+yt.be
+youtube-nocookie.com
+youtubekids.com
+www.youtube.com
+m.youtube.com
+music.youtube.com
+studio.youtube.com
+tv.youtube.com
+kids.youtube.com
+youtubei.googleapis.com
+youtube.googleapis.com
+googlevideo.com
+wide-youtube.l.google.com
+youtube-ui.l.google.com
+ytimg.com
+i.ytimg.com
+s.ytimg.com
+ggpht.com
+yt3.ggpht.com
+googleusercontent.com
+yt3.googleusercontent.com
+lh3.googleusercontent.com
+lh4.googleusercontent.com
+lh5.googleusercontent.com
+lh6.googleusercontent.com
+jnn-pa.googleapis.com
 # --- Telegram ---
 telegram.org
 t.me
@@ -15,7 +44,7 @@ telegram-cdn.org
 telesco.pe
 legra.ph
 graph.org
-# --- Meta (Instagram / Facebook / WhatsApp / Threads) ---
+# --- Meta ---
 instagram.com
 cdninstagram.com
 facebook.com
@@ -53,18 +82,6 @@ tiktokv.eu
 musical.ly
 byteoversea.com
 ibytedtos.com
-# --- YouTube image CDNs (thumbs, avatars, community — often fail under DPI/IPv6/DoH) ---
-ytimg.com
-i.ytimg.com
-s.ytimg.com
-ggpht.com
-yt3.ggpht.com
-googleusercontent.com
-yt3.googleusercontent.com
-lh3.googleusercontent.com
-lh4.googleusercontent.com
-lh5.googleusercontent.com
-lh6.googleusercontent.com
 # --- AI ---
 gemini.google.com
 bard.google.com
@@ -84,7 +101,7 @@ perplexity.ai
 pplx.ai
 groq.com
 copilot.microsoft.com
-# --- News / media (often blocked) ---
+# --- News ---
 meduza.io
 zona.media
 currenttime.tv

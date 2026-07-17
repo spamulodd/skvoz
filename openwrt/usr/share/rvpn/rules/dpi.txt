@@ -1,24 +1,5 @@
-# Zapret DPI hostlist — real IPs, nfqws on WAN (NOT hard IP bans)
-# YouTube HTML / player / video CDN — keep on zapret for speed
-youtube.com
-youtu.be
-yt.be
-youtube-nocookie.com
-youtubekids.com
-youtubei.googleapis.com
-youtube.googleapis.com
-www.youtube.com
-m.youtube.com
-music.youtube.com
-studio.youtube.com
-tv.youtube.com
-kids.youtube.com
-googlevideo.com
-wide-youtube.l.google.com
-youtube-ui.l.google.com
-# Player / metrics helpers
-jnn-pa.googleapis.com
-play.google.com
+# Zapret DPI — only what still works well on real IPs with nfqws.
+# YouTube player/API/CDN moved to vpn-domains (FakeIP) — SPA "no internet" otherwise.
 # Cinema / trackers
 hdrezka.ag
 hdrezka.me

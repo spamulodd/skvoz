@@ -103,7 +103,8 @@ nft_build_cidr_elements() {
 }
 
 nft_apply_quic() {
-	# Force TCP so nfqws can desync YT image CDNs (HTTP/3 often stuck under DPI)
+	# Reject QUIC on WAN path only. NEVER reject FakeIP / vpn_cidr — that
+	# runs before tproxy and broke YouTube API + Telegram media UDP.
 	dq=$(uci_get disable_quic)
 	zap=$(uci_get zapret_enabled)
 	vpn=$(uci_get vpn_enabled)
@@ -114,16 +115,35 @@ nft_apply_quic() {
 	if [ "$zap" != "1" ] && [ "$vpn" != "1" ]; then
 		return 0
 	fi
-	if nft -f - <<'EOF'
+	fake=$(uci_get fakeip_inet4_range)
+	[ -n "$fake" ] || fake=198.18.0.0/15
+	elems=$(nft_build_cidr_elements)
+	set_block=""
+	skip_cidr=""
+	if [ -n "$elems" ]; then
+		set_block="
+	set vpn_cidr {
+		type ipv4_addr
+		flags interval
+		auto-merge
+		elements = { $elems }
+	}"
+		skip_cidr="
+		iifname \"br-lan\" ip daddr @vpn_cidr accept"
+	fi
+	if nft -f - <<EOF
 table inet rvpn_quic {
+$set_block
 	chain prerouting {
 		type filter hook prerouting priority -155; policy accept;
+		iifname "br-lan" ip daddr $fake accept
+$skip_cidr
 		iifname "br-lan" meta l4proto udp udp dport 443 reject
 	}
 }
 EOF
 	then
-		log "nft QUIC reject on br-lan udp/443"
+		log "nft QUIC reject (skip FakeIP/vpn_cidr)"
 	else
 		log "WARN: nft quic apply failed"
 	fi
