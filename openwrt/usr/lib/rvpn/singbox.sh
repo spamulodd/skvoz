@@ -211,7 +211,7 @@ sb_generate() {
     ],
     "rules": [
       {"query_type": ["HTTPS", "SVCB"], "action": "reject"},
-      {"domain_suffix": $vpn_dom, "server": "fakeip", "rewrite_ttl": 1}
+      {"domain_suffix": $vpn_dom, "server": "fakeip", "rewrite_ttl": 60}
     ],
     "final": "local",
     "independent_cache": true,
@@ -241,7 +241,7 @@ sb_generate() {
   "route": {
     "default_domain_resolver": "local",
     "rules": [
-      {"action": "sniff", "sniffer": ["http", "tls", "quic", "dns"], "timeout": "500ms"},
+      {"action": "sniff", "sniffer": ["http", "tls", "quic", "dns"], "timeout": "800ms"},
       {"protocol": "dns", "action": "hijack-dns"},
       {"ip_is_private": true, "outbound": "direct"},
       {"domain_suffix": $games_dom, "outbound": "direct"},
@@ -298,6 +298,8 @@ sb_reload_domains() {
 	}
 	sb_generate || return 1
 	sb_kill_ours
+	# Keep cache.db (store_fakeip). Only flush dnsmasq so LAN gets fresh answers.
+	killall -HUP dnsmasq 2>/dev/null || true
 	sleep 1
 	"$SB_BIN" run -c "$RVPN_SB_JSON" >/tmp/rvpn/sing-box.log 2>&1 &
 	echo $! >"$RVPN_RUN/sing-box.pid"

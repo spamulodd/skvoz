@@ -19,6 +19,7 @@ nft_flush_quic() {
 
 nft_flush_doh() {
 	nft list table inet rvpn_doh >/dev/null 2>&1 && nft delete table inet rvpn_doh || true
+	nft list table inet rvpn_dns >/dev/null 2>&1 && nft delete table inet rvpn_dns || true
 }
 
 nft_flush_all() {
@@ -83,6 +84,23 @@ EOF
 		log "nft DoH/DoT block on br-lan"
 	else
 		log "WARN: nft doh apply failed"
+	fi
+
+	# NAT redirect: force LAN DNS to router (filter-hook redirect unsupported on mt7621)
+	nft list table inet rvpn_dns >/dev/null 2>&1 && nft delete table inet rvpn_dns || true
+	if nft -f - <<EOF
+table inet rvpn_dns {
+	chain prerouting {
+		type nat hook prerouting priority dstnat; policy accept;
+		iifname "br-lan" meta l4proto udp udp dport 53 redirect to :53
+		iifname "br-lan" meta l4proto tcp tcp dport 53 redirect to :53
+	}
+}
+EOF
+	then
+		log "nft DNS redirect (nat) on br-lan"
+	else
+		log "WARN: nft DNS redirect unsupported"
 	fi
 }
 

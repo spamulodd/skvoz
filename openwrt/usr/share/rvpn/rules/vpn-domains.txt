@@ -125,17 +125,29 @@ apnews.com
 # --- Geo-blocked manga / LIB family / atsu ---
 atsu.moe
 hentailib.me
+www.hentailib.me
+hentailib.org
+v1.hentailib.org
 slashlib.me
+www.slashlib.me
 v2.slashlib.me
+v1.slashlib.me
 v2.shlib.life
+www.shlib.life
 shlib.life
+v1.shlib.life
 mangalib.me
+www.mangalib.me
 mangalib.org
 ranobelib.me
-lib.social
-api.lib.social
-img.lib.social
-cover.imglib.info
-imglib.info
+www.ranobelib.me
 yaoilib.me
+lib.social
+app.lib.social
+img.lib.social
+static.lib.social
+cover.imglib.info
+img2.imglib.info
+imglib.info
+services.lib.social
 
