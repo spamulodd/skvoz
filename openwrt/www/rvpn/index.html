@@ -546,24 +546,31 @@
 
   document.getElementById('btn-refresh').addEventListener('click', refresh);
 
-  document.getElementById('btn-restart').addEventListener('click', async function () {
-    this.disabled = true;
+  async function runSvc(btn, query, waitMs) {
+    btn.disabled = true;
     try {
-      await api('restart');
-      await refresh();
-    } finally {
-      this.disabled = false;
+      await api(query);
+    } catch (e) {
+      statusRow.replaceChildren(badge('команда ошибка', 'bad'));
+      btn.disabled = false;
+      return;
     }
+    try {
+      await new Promise(function (r) { setTimeout(r, waitMs || 3500); });
+      await refresh();
+    } catch (e) {
+      statusRow.replaceChildren(badge('статус недоступен', 'bad'));
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  document.getElementById('btn-restart').addEventListener('click', function () {
+    runSvc(this, 'restart', 4000);
   });
 
-  document.getElementById('btn-stop').addEventListener('click', async function () {
-    this.disabled = true;
-    try {
-      await api('stop');
-      await refresh();
-    } finally {
-      this.disabled = false;
-    }
+  document.getElementById('btn-stop').addEventListener('click', function () {
+    runSvc(this, 'stop', 2500);
   });
 
   document.getElementById('btn-log').addEventListener('click', async function () {

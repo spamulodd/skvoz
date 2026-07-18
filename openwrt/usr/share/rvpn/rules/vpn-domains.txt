@@ -122,6 +122,12 @@ reuters.com
 nytimes.com
 washingtonpost.com
 apnews.com
+# --- Bug bounty / security (often CF/geo issues from RU) ---
+immunefi.com
+# --- Patreon (site + API + media CDN; domain_suffix covers *.patreon*) ---
+patreon.com
+www.patreon.com
+patreonusercontent.com
 # --- Geo-blocked manga / LIB family / atsu ---
 atsu.moe
 hentailib.me

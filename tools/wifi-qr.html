@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Новый WiFi с VPN</title>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=Syne:wght@700;800&display=swap');
+
+    :root {
+      --ink: #0f1a14;
+      --muted: #3d5248;
+      --line: #c5d4cb;
+      --paper: #f3f7f4;
+      --accent: #1f6b4a;
+      --accent-soft: #d8ebe2;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      min-height: 100%;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #dff0e7 0%, transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, #e8f0ec 0%, transparent 50%),
+        linear-gradient(180deg, #eef4f0 0%, var(--paper) 40%, #e7efe9 100%);
+      color: var(--ink);
+      font-family: 'DM Sans', sans-serif;
+    }
+
+    .sheet {
+      width: min(210mm, 100%);
+      min-height: 297mm;
+      margin: 0 auto;
+      padding: 28mm 22mm 24mm;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+    }
+
+    .sheet::before {
+      content: '';
+      position: absolute;
+      inset: 12mm;
+      border: 1px solid var(--line);
+      pointer-events: none;
+    }
+
+    .top {
+      text-align: center;
+      width: 100%;
+      padding-top: 8mm;
+    }
+
+    .eyebrow {
+      display: inline-block;
+      font-size: 12px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: clamp(34px, 6vw, 52px);
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      max-width: 14ch;
+      margin: 0 auto;
+    }
+
+    .sub {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.45;
+      max-width: 32ch;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .notice {
+      margin: 16px auto 0;
+      max-width: 36ch;
+      padding: 10px 14px;
+      background: #fff4e5;
+      color: #8c5014;
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.4;
+      border-left: 3px solid #d0893a;
+    }
+
+    .form {
+      width: 100%;
+      max-width: 420px;
+      margin: 24px auto 0;
+      display: grid;
+      gap: 12px;
+      text-align: left;
+    }
+
+    .form label {
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .form input {
+      font: inherit;
+      font-size: 16px;
+      letter-spacing: normal;
+      text-transform: none;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+    }
+
+    .form button {
+      margin-top: 4px;
+      font: inherit;
+      font-weight: 700;
+      padding: 12px 16px;
+      border: 0;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+    }
+
+    .qr-wrap {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      margin: 28px 0;
+    }
+
+    .qr-wrap.show { display: flex; }
+
+    .qr-frame {
+      background: #fff;
+      padding: 22px;
+      border: 1px solid var(--line);
+      box-shadow: 0 18px 50px rgba(15, 26, 20, 0.08);
+    }
+
+    #qr svg {
+      display: block;
+      width: min(62vw, 280px);
+      height: auto;
+    }
+
+    .scan-hint {
+      font-size: 13px;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+    }
+
+    .creds {
+      display: none;
+      width: 100%;
+      max-width: 420px;
+      border-top: 1px solid var(--line);
+      padding-top: 22px;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    .creds.show { display: grid; }
+
+    .row {
+      display: grid;
+      grid-template-columns: 88px 1fr;
+      gap: 12px;
+      align-items: baseline;
+    }
+
+    .label {
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+      padding-top: 4px;
+    }
+
+    .value {
+      font-family: 'Syne', sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      word-break: break-all;
+      background: var(--accent-soft);
+      color: var(--ink);
+      padding: 10px 14px;
+      border-left: 3px solid var(--accent);
+    }
+
+    .foot {
+      margin-top: 18px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    @media print {
+      @page { size: A4; margin: 0; }
+      html, body {
+        background: #fff;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .sheet {
+        width: 210mm;
+        min-height: 297mm;
+        padding: 24mm 20mm;
+      }
+      .qr-frame { box-shadow: none; }
+      .form, .no-print { display: none !important; }
+      .qr-wrap, .creds { display: flex !important; }
+      .creds { display: grid !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="sheet">
+    <header class="top">
+      <div class="eyebrow">RVPN · OpenWrt</div>
+      <h1>Новый WiFi с VPN</h1>
+      <p class="sub">Отсканируйте QR-код камерой телефона — сеть подключится автоматически.</p>
+      <p class="notice">Работает в тестовом режиме. Возможны сайты, которые не открываются или открываются нестабильно.</p>
+
+      <form class="form no-print" id="wifi-form" autocomplete="off">
+        <label>Сеть
+          <input id="ssid-input" name="ssid" required placeholder="SSID" spellcheck="false">
+        </label>
+        <label>Пароль
+          <input id="pass-input" name="pass" required placeholder="Wi‑Fi password" spellcheck="false">
+        </label>
+        <button type="submit">Сгенерировать QR</button>
+      </form>
+    </header>
+
+    <section class="qr-wrap" id="qr-wrap" aria-label="QR-код Wi‑Fi">
+      <div class="qr-frame">
+        <div id="qr"></div>
+      </div>
+      <p class="scan-hint">Сканировать для подключения</p>
+    </section>
+
+    <section class="creds" id="creds" aria-label="Данные сети">
+      <div class="row">
+        <div class="label">Сеть</div>
+        <div class="value" id="ssid"></div>
+      </div>
+      <div class="row">
+        <div class="label">Пароль</div>
+        <div class="value" id="pass"></div>
+      </div>
+      <p class="foot">2.4 GHz · 5 GHz · WPA/WPA2</p>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      function esc(s) {
+        return String(s).replace(/([\\;,:"])/g, '\\$1');
+      }
+
+      function render(ssid, pass) {
+        if (typeof qrcode !== 'function') {
+          document.getElementById('qr').textContent = 'Нет библиотеки QR (нужен интернет для CDN).';
+          return;
+        }
+        var payload = 'WIFI:T:WPA;S:' + esc(ssid) + ';P:' + esc(pass) + ';;';
+        var qr = qrcode(0, 'M');
+        qr.addData(payload);
+        qr.make();
+        document.getElementById('qr').innerHTML = qr.createSvgTag({
+          scalable: true,
+          margin: 0
+        });
+        document.getElementById('ssid').textContent = ssid;
+        document.getElementById('pass').textContent = pass;
+        document.getElementById('qr-wrap').classList.add('show');
+        document.getElementById('creds').classList.add('show');
+      }
+
+      var params = new URLSearchParams(location.search);
+      var ssid = params.get('ssid') || '';
+      var pass = params.get('pass') || params.get('password') || '';
+
+      document.getElementById('ssid-input').value = ssid;
+      document.getElementById('pass-input').value = pass;
+
+      document.getElementById('wifi-form').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var s = document.getElementById('ssid-input').value.trim();
+        var p = document.getElementById('pass-input').value;
+        if (!s || !p) return;
+        var next = new URL(location.href);
+        next.searchParams.set('ssid', s);
+        next.searchParams.set('pass', p);
+        history.replaceState(null, '', next);
+        render(s, p);
+      });
+
+      if (ssid && pass) render(ssid, pass);
+    })();
+  </script>
+</body>
+</html>

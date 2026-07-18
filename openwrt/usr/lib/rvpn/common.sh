@@ -123,14 +123,25 @@ sb_kill_ours() {
 }
 
 # Serialize init.d actions (CGI / rvpnctl).
+# BusyBox flock has no -w: poll flock -n on FD, then run under held lock.
 rvpn_with_lock() {
 	mkdir -p "$RVPN_RUN"
-	if command -v flock >/dev/null 2>&1; then
-		# shellcheck disable=SC2086
-		flock -w 120 "$RVPN_SVC_LOCK" "$@"
-	else
+	if ! command -v flock >/dev/null 2>&1; then
 		"$@"
+		return $?
 	fi
+	(
+		i=0
+		while ! flock -n 9; do
+			i=$((i + 1))
+			if [ "$i" -gt 120 ]; then
+				log "rvpn_with_lock: timeout after 120s"
+				exit 1
+			fi
+			sleep 1
+		done
+		"$@"
+	) 9>"$RVPN_SVC_LOCK"
 }
 
 list_domains() {
