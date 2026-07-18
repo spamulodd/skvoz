@@ -122,3 +122,20 @@ reuters.com
 nytimes.com
 washingtonpost.com
 apnews.com
+# --- Geo-blocked manga / LIB family / atsu ---
+atsu.moe
+hentailib.me
+slashlib.me
+v2.slashlib.me
+v2.shlib.life
+shlib.life
+mangalib.me
+mangalib.org
+ranobelib.me
+lib.social
+api.lib.social
+img.lib.social
+cover.imglib.info
+imglib.info
+yaoilib.me
+

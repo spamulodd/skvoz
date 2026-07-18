@@ -98,7 +98,8 @@ sb_generate() {
 	ll_j=$(json_escape "$ll")
 	ut_iv_j=$(json_escape "$ut_iv")
 
-	vpn_dom=$(sb_build_json_array "$RVPN_RULES/vpn-domains.txt")
+	merged=$(vpn_domains_merged_file)
+	vpn_dom=$(sb_build_json_array "$merged")
 	games_dom=$(sb_build_json_array "$RVPN_RULES/games-domains.txt")
 	vpn_cidr='[]'
 	[ -f "$RVPN_RULES/vpn-cidr.txt" ] && vpn_cidr=$(sb_build_cidr_json_array "$RVPN_RULES/vpn-cidr.txt")
@@ -286,4 +287,26 @@ sb_stop() {
 	sb_kill_ours
 	rm -f "$RVPN_RUN/sing-box.pid"
 	log "sing-box stopped"
+}
+
+# Reload FakeIP domain lists without full nft/zapret cycle.
+sb_reload_domains() {
+	vpn=$(uci_get vpn_enabled)
+	[ "$vpn" = "1" ] || {
+		log "vpn disabled — domain list saved, enable VPN to apply"
+		return 0
+	}
+	sb_generate || return 1
+	sb_kill_ours
+	sleep 1
+	"$SB_BIN" run -c "$RVPN_SB_JSON" >/tmp/rvpn/sing-box.log 2>&1 &
+	echo $! >"$RVPN_RUN/sing-box.pid"
+	chmod 600 "$RVPN_RUN/sing-box.pid" "$RVPN_SB_JSON" 2>/dev/null || true
+	sleep 2
+	if [ -z "$(sb_pids)" ]; then
+		log "ERROR: sing-box reload failed"
+		return 1
+	fi
+	log "sing-box reloaded (domains)"
+	return 0
 }

@@ -9,6 +9,8 @@
 | Игры (Steam, Epic…) | DIRECT | `games-domains.txt` |
 | YouTube (сайт, API, видео, превью) | **VPN** | `vpn-domains.txt` |
 | Telegram текст + media/стикеры | **VPN** | `vpn-domains.txt` + `vpn-cidr.txt` |
+| SlashLIB / HentaiLIB / MangaLib / atsu.moe | **VPN** | `vpn-domains.txt` |
+| Свои домены (быстрый add) | **VPN** | `vpn-user.txt` (`rvpnctl add-domain`) |
 | Instagram / Meta / Discord / TikTok / X | **VPN** | `vpn-domains.txt` (+ meta в `vpn-cidr.txt`) |
 | Gemini / ChatGPT / news | **VPN** | `vpn-domains.txt` |
 | hdrezka, rutracker | **zapret** | `dpi.txt` |

@@ -1,0 +1,3 @@
+# User VPN domains (quick-add). Merged with vpn-domains.txt.
+# Add via UI, or: rvpnctl add-domain example.com
+# One domain per line. Comments start with #.

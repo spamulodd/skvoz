@@ -137,3 +137,61 @@ list_domains() {
 	[ -f "$1" ] || return 0
 	sed -e 's/#.*//' -e '/^[[:space:]]*$/d' -e 's/[[:space:]]//g' "$1"
 }
+
+RVPN_USER_DOMAINS=$RVPN_RULES/vpn-user.txt
+
+# Normalize host: strip scheme/path, lowercase.
+normalize_domain() {
+	d=$1
+	d=$(printf '%s' "$d" | sed -e 's|^[Hh][Tt][Tt][Pp][Ss]*://||' -e 's|/.*||' -e 's|:.*||' -e 's/^www\.//')
+	printf '%s' "$d" | tr 'A-Z' 'a-z'
+}
+
+domain_in_file() {
+	f=$1
+	d=$2
+	[ -f "$f" ] || return 1
+	list_domains "$f" | grep -qxF "$d"
+}
+
+# Append to vpn-user.txt (idempotent).
+vpn_user_add() {
+	d=$(normalize_domain "$1")
+	valid_domain_token "$d" || {
+		log "ERROR: bad domain '$1'"
+		return 1
+	}
+	mkdir -p "$RVPN_RULES"
+	touch "$RVPN_USER_DOMAINS"
+	if domain_in_file "$RVPN_RULES/vpn-domains.txt" "$d" || domain_in_file "$RVPN_USER_DOMAINS" "$d"; then
+		log "domain already listed: $d"
+		return 0
+	fi
+	printf '%s\n' "$d" >>"$RVPN_USER_DOMAINS"
+	log "vpn-user add: $d"
+	return 0
+}
+
+vpn_user_del() {
+	d=$(normalize_domain "$1")
+	[ -f "$RVPN_USER_DOMAINS" ] || return 0
+	tmp=$RVPN_RUN/vpn-user.new
+	list_domains "$RVPN_USER_DOMAINS" | grep -vxF "$d" >"$tmp" || true
+	{
+		echo "# User VPN domains (quick-add). Merged with vpn-domains.txt."
+		cat "$tmp"
+	} >"$RVPN_USER_DOMAINS"
+	rm -f "$tmp"
+	log "vpn-user del: $d"
+}
+
+# Merge shipped + user domain lists into one file for JSON builder.
+vpn_domains_merged_file() {
+	out=$RVPN_RUN/vpn-domains.merged
+	: >"$out"
+	list_domains "$RVPN_RULES/vpn-domains.txt" >>"$out"
+	list_domains "$RVPN_USER_DOMAINS" >>"$out"
+	# unique preserve order
+	awk '!seen[$0]++' "$out" >"$out.u" && mv "$out.u" "$out"
+	echo "$out"
+}

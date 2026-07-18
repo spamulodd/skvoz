@@ -348,7 +348,7 @@
   <p>Введите UI-токен (один раз сохранится в браузере).</p>
   <input id="token-input" type="password" autocomplete="current-password" placeholder="ui_secret">
   <button class="btn" id="btn-unlock" type="button">Войти</button>
-  <p class="hint">На роутере: <code>uci get rvpn.main.ui_secret</code></p>
+  <p class="hint">Токен: <code>rvpnctl ui-secret</code> или <code>uci get rvpn.main.ui_secret</code><br>Скопируйте целиком, без пробелов.</p>
 </div>
 <div class="wrap app hidden" id="app">
 
@@ -407,9 +407,22 @@
           <tr><td>Discord, TikTok, X</td><td><span class="layer vpn">VPN</span></td></tr>
           <tr><td>Gemini, ChatGPT</td><td><span class="layer vpn">VPN</span></td></tr>
           <tr><td>meduza, bbc, dw</td><td><span class="layer vpn">VPN</span></td></tr>
+          <tr><td>SlashLIB, HentaiLIB, MangaLib, atsu.moe</td><td><span class="layer vpn">VPN</span></td></tr>
           <tr><td>остальное</td><td><span class="layer direct">DIRECT</span></td></tr>
         </tbody>
       </table>
+    </div>
+
+    <div class="matrix" id="domain-box">
+      <h3>Быстрый VPN-домен</h3>
+      <p style="color:var(--muted);font-size:0.85rem;margin:0 0 0.75rem">Гео-блок / hard-block → FakeIP+VPN. Пример: <code>atsu.moe</code></p>
+      <div class="actions" style="margin-bottom:0.75rem">
+        <input id="domain-input" type="text" placeholder="example.com" autocomplete="off"
+          style="flex:1;min-width:10rem;padding:0.55rem 0.75rem;border-radius:10px;border:1px solid var(--line);background:rgba(0,0,0,0.25);color:var(--ink);font:inherit">
+        <button class="btn" id="btn-add-domain" type="button">Добавить</button>
+      </div>
+      <p id="domain-msg" style="color:var(--muted);font-size:0.8rem;min-height:1.2em"></p>
+      <p style="color:var(--muted);font-size:0.75rem;margin:0">CLI: <code>rvpnctl add-domain example.com</code></p>
     </div>
 
     <div class="log-box" id="log-box">
@@ -439,8 +452,10 @@
 
   async function api(query) {
     const t = token();
-    // Auth via header only — never put token in query (uhttpd access logs).
-    const r = await fetch(API + '?' + query, {
+    // uhttpd does not pass X-Skvoz-Token to CGI — token in query is required.
+    const sep = query.indexOf('?') >= 0 ? '&' : (query ? '&' : '');
+    const q = query + (t ? sep + 'token=' + encodeURIComponent(t) : '');
+    const r = await fetch(API + '?' + q, {
       cache: 'no-store',
       headers: t ? { 'X-Skvoz-Token': t } : {}
     });
@@ -576,17 +591,40 @@
   });
 
   document.getElementById('btn-unlock').addEventListener('click', async function () {
-    const v = document.getElementById('token-input').value.trim();
+    const v = document.getElementById('token-input').value.trim().replace(/\s+/g, '');
     if (!v) return;
     localStorage.setItem(LS, v);
     try {
       await api('status');
       showApp();
       refresh();
+      setInterval(refresh, 15000);
     } catch (e) {
       localStorage.removeItem(LS);
-      alert('Неверный токен');
+      alert('Неверный токен. На роутере: rvpnctl ui-secret');
     }
+  });
+
+  document.getElementById('btn-add-domain').addEventListener('click', async function () {
+    const input = document.getElementById('domain-input');
+    const msg = document.getElementById('domain-msg');
+    const d = (input.value || '').trim();
+    if (!d) return;
+    this.disabled = true;
+    msg.textContent = 'добавляю…';
+    try {
+      const raw = await api('add-domain&domain=' + encodeURIComponent(d));
+      const j = JSON.parse(raw.trim().split('\n')[0]);
+      msg.textContent = 'OK: ' + (j.domain || d) + ' → VPN';
+      input.value = '';
+    } catch (e) {
+      msg.textContent = 'ошибка добавления';
+    } finally {
+      this.disabled = false;
+    }
+  });
+  document.getElementById('domain-input').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') document.getElementById('btn-add-domain').click();
   });
 
   async function boot() {

@@ -1,12 +1,18 @@
 #!/bin/sh
 . /usr/lib/rvpn/common.sh
 . /usr/lib/rvpn/health.sh
+. /usr/lib/rvpn/singbox.sh
 
 qs=${QUERY_STRING:-status}
 cmd=${qs%%&*}
 
 get_arg() {
-	echo "$qs" | tr '&' '\n' | sed -n "s/^$1=//p" | head -1
+	echo "$qs" | tr '&' '\n' | sed -n "s/^$1=//p" | head -1 | sed 's/+/ /g' | sed 's/%3A/:/g;s/%2F/\//g;s/%3a/:/g;s/%2f/\//g'
+}
+
+# Minimal URL-decode for domain args
+urldecode() {
+	printf '%b' "$(printf '%s' "$1" | sed 's/+/ /g;s/%\([0-9A-Fa-f][0-9A-Fa-f]\)/\\x\1/g')"
 }
 
 json_hdr() {
@@ -28,9 +34,12 @@ require_auth() {
 		echo '{"error":"no_ui_secret"}'
 		exit 0
 	}
-	# Prefer header only (avoid token in access logs). Query token accepted as legacy.
-	got=$HTTP_X_SKVOZ_TOKEN
-	[ -z "$got" ] && got=$(get_arg token)
+	# uhttpd often does NOT pass custom headers/cookies to CGI — query token is reliable.
+	got=$(get_arg token)
+	[ -z "$got" ] && got=$HTTP_X_SKVOZ_TOKEN
+	if [ -z "$got" ] && [ -n "$HTTP_COOKIE" ]; then
+		got=$(echo "$HTTP_COOKIE" | tr ';' '\n' | sed -n 's/^[[:space:]]*skvoz_token=//p' | head -1)
+	fi
 	if [ -z "$got" ] || [ "$got" != "$want" ]; then
 		echo "Status: 401 Unauthorized"
 		json_hdr
@@ -39,7 +48,6 @@ require_auth() {
 	fi
 }
 
-# Async service action under flock
 svc_async() {
 	action=$1
 	(
@@ -73,7 +81,6 @@ set)
 	uci commit rvpn
 	svc_async restart
 	json_hdr
-	# Include enabled flags; running updates after async restart (UI polls).
 	printf '{"ok":1,"async":1,"zapret_enabled":%s,"vpn_enabled":%s,"zapret_running":0,"vpn_running":0}\n' \
 		"$(uci_get zapret_enabled)" "$(uci_get vpn_enabled)"
 	;;
@@ -107,6 +114,52 @@ ping)
 		-G "http://${api}/proxies/rvpn-urltest/delay" \
 		--data-urlencode "url=${ut_url}" \
 		--data "timeout=5000" 2>/dev/null || echo '{"delay":0}'
+	;;
+domains)
+	require_auth
+	json_hdr
+	tmpu=$RVPN_RUN/domains-user.jsonl
+	: >"$tmpu"
+	list_domains "$RVPN_USER_DOMAINS" 2>/dev/null | while IFS= read -r d; do
+		[ -n "$d" ] || continue
+		printf '"%s"\n' "$(json_escape "$d")" >>"$tmpu"
+	done
+	echo -n '{"user":['
+	sep=
+	while IFS= read -r line; do
+		[ -n "$line" ] || continue
+		printf '%s%s' "$sep" "$line"
+		sep=,
+	done <"$tmpu"
+	echo -n '],"shipped_geo":["atsu.moe","hentailib.me","slashlib.me","v2.shlib.life","mangalib.me","ranobelib.me","lib.social"]}'
+	echo
+	;;
+add-domain)
+	require_auth
+	raw=$(get_arg domain)
+	raw=$(urldecode "$raw")
+	if vpn_user_add "$raw"; then
+		d=$(normalize_domain "$raw")
+		sb_reload_domains >/dev/null 2>&1 || true
+		json_hdr
+		dj=$(json_escape "$d")
+		printf '{"ok":1,"domain":"%s"}\n' "$dj"
+	else
+		echo "Status: 400 Bad Request"
+		json_hdr
+		echo '{"error":"bad_domain"}'
+	fi
+	;;
+del-domain)
+	require_auth
+	raw=$(get_arg domain)
+	raw=$(urldecode "$raw")
+	d=$(normalize_domain "$raw")
+	vpn_user_del "$d"
+	sb_reload_domains >/dev/null 2>&1 || true
+	json_hdr
+	dj=$(json_escape "$d")
+	printf '{"ok":1,"domain":"%s"}\n' "$dj"
 	;;
 *)
 	text_hdr

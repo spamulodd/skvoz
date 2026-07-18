@@ -62,11 +62,30 @@ disable-vpn)
 gen-config)
 	sb_generate && echo "OK $RVPN_SB_JSON" || echo FAIL
 	;;
+add-domain)
+	[ -n "$2" ] || { echo "Usage: rvpnctl add-domain example.com"; exit 1; }
+	vpn_user_add "$2" || exit 1
+	sb_reload_domains && echo "OK added $(normalize_domain "$2")" || echo "saved (reload failed)"
+	;;
+del-domain)
+	[ -n "$2" ] || { echo "Usage: rvpnctl del-domain example.com"; exit 1; }
+	vpn_user_del "$2"
+	sb_reload_domains && echo "OK removed $(normalize_domain "$2")" || echo "removed (reload failed)"
+	;;
+list-domains)
+	echo "# shipped (vpn-domains.txt)"
+	list_domains "$RVPN_RULES/vpn-domains.txt"
+	echo "# user (vpn-user.txt)"
+	list_domains "$RVPN_USER_DOMAINS"
+	;;
+ui-secret)
+	ensure_ui_secret
+	;;
 log)
 	tail -n "${2:-80}" "$RVPN_LOG" 2>/dev/null
 	;;
 *)
-	echo "Usage: rvpnctl status|start|stop|restart|enable-zapret|disable-zapret|enable-vpn|disable-vpn|gen-config|log"
+	echo "Usage: rvpnctl status|start|stop|restart|enable-zapret|disable-zapret|enable-vpn|disable-vpn|gen-config|add-domain|del-domain|list-domains|ui-secret|log"
 	exit 1
 	;;
 esac

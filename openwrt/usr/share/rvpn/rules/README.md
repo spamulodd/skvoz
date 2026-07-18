@@ -7,7 +7,8 @@
 | File | Layer |
 |------|-------|
 | `games-domains.txt` | DIRECT (games) |
-| `vpn-domains.txt` | VPN FakeIP |
+| `vpn-domains.txt` | VPN FakeIP (shipped) |
+| `vpn-user.txt` | VPN FakeIP (quick-add: `rvpnctl add-domain`) |
 | `vpn-cidr.txt` | VPN IP (Telegram DC/media, Meta); sync: `tools/sync-telegram-cidr.sh` |
 | `dpi.txt` | zapret / nfqws (DPI bypass) |
 | `doh-hosts.txt` | DoH domains (reference) |
