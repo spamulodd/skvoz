@@ -134,6 +134,8 @@ washingtonpost.com
 apnews.com
 # --- Bug bounty / security (often CF/geo issues from RU) ---
 immunefi.com
+# --- GTA Script Hook / AB Software (DPI hangs /files downloads from RU) ---
+dev-c.com
 # --- Patreon ---
 patreon.com
 patreonusercontent.com
