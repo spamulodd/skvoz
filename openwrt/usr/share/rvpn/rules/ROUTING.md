@@ -7,7 +7,7 @@
 |--------|------|------|
 | Рунет, private | DIRECT | geoip / default |
 | Игры (Steam, Epic…) | DIRECT | `games-domains.txt` |
-| Rockstar Launcher / Social Club | **VPN** | `vpn-domains.txt` (+ Akamai companions) |
+| Rockstar Launcher / Social Club | **DIRECT + zapret** | `games-domains.txt` + `dpi.txt` (не FakeIP: мёртвые mux.* вешают лаунчер) |
 | YouTube (сайт, API, видео, превью) | **VPN** | `vpn-domains.txt` |
 | Telegram текст + media/стикеры | **VPN** | `vpn-domains.txt` + `vpn-cidr.txt` |
 | SlashLIB / HentaiLIB / MangaLib / atsu.moe | **VPN** | `vpn-domains.txt` |

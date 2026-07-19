@@ -136,11 +136,8 @@ apnews.com
 immunefi.com
 # --- GTA Script Hook / AB Software (DPI hangs /files downloads from RU) ---
 dev-c.com
-# --- Rockstar Games Launcher / Social Club / ROS (Akamai + auth; DIRECT often hangs) ---
-rockstargames.com
-rsg.sc
-media-rockstargames-com.akamaized.net
-gamedownloads-rockstargames-com.akamaized.net
+# Rockstar Launcher: NOT FakeIP — dead mux.* names become FakeIP blackholes and hang the app.
+# See games-domains.txt + dpi.txt (DIRECT + zapret).
 # --- Patreon ---
 patreon.com
 patreonusercontent.com

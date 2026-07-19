@@ -1,6 +1,9 @@
 # Zapret DPI — only what still works well on real IPs with nfqws.
 # Strategy aligned with zapret-discord-youtube «general (ALT11)» (fake+multisplit, fooling=ts).
 # YouTube player/API/CDN → vpn-domains (FakeIP).
+# Rockstar Launcher / Social Club (real IP; FakeIP breaks obsolete mux.* hosts)
+rockstargames.com
+rsg.sc
 # Cinema / trackers
 hdrezka.ag
 hdrezka.me
