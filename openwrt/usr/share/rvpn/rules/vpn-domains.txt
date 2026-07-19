@@ -146,8 +146,7 @@ music.apple.com
 itunes.apple.com
 mzstatic.com
 push.apple.com
-# --- Google push (narrow FCM / mtalk only — not all Google) ---
-mtalk.google.com
+# --- Google push (FCM HTTPS only; mtalk:5228 NOT FakeIP — breaks Rockstar Social Club) ---
 fcm.googleapis.com
 fcmregistrations.googleapis.com
 firebaseinstallations.googleapis.com
