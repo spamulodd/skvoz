@@ -1,6 +1,20 @@
 # Hard-block → VPN (FakeIP). Shipped lists — no manual shunt.
 # Prefer apex (domain_suffix); avoid redundant www / mega-CDNs (cloudflare/akamai/googleapis wholesale).
-# YouTube → dpi.txt (zapret ALT11), not FakeIP.
+# --- YouTube (full stack: page + API + video + thumbs) ---
+youtube.com
+youtu.be
+yt.be
+youtube-nocookie.com
+youtubekids.com
+youtubei.googleapis.com
+youtube.googleapis.com
+googlevideo.com
+wide-youtube.l.google.com
+youtube-ui.l.google.com
+ytimg.com
+ggpht.com
+googleusercontent.com
+jnn-pa.googleapis.com
 # --- Telegram (domains + CDN; DC/media IPs also in vpn-cidr.txt) ---
 telegram.org
 t.me
@@ -87,7 +101,7 @@ redd.it
 redditmedia.com
 redditstatic.com
 reddituploads.com
-# --- AI (Gemini via VPN; YouTube is zapret) ---
+# --- AI ---
 gemini.google.com
 bard.google.com
 ai.google.dev

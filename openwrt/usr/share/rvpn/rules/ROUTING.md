@@ -7,7 +7,7 @@
 |--------|------|------|
 | Рунет, private | DIRECT | geoip / default |
 | Игры (Steam, Epic…) | DIRECT | `games-domains.txt` |
-| YouTube (сайт, API, видео, превью) | **zapret** | `dpi.txt` (nfqws ALT11-like) |
+| YouTube (сайт, API, видео, превью) | **VPN** | `vpn-domains.txt` |
 | Telegram текст + media/стикеры | **VPN** | `vpn-domains.txt` + `vpn-cidr.txt` |
 | SlashLIB / HentaiLIB / MangaLib / atsu.moe | **VPN** | `vpn-domains.txt` |
 | Свои домены (быстрый add) | **VPN** | `vpn-user.txt` (`rvpnctl add-domain`) |
