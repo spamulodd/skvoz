@@ -28,8 +28,7 @@ esportal.com
 boosteroid.com
 geforce.com
 nvidia.com
-rockstargames.com
-socialclub.rockstargames.com
+# Rockstar Launcher → vpn-domains (FakeIP); DIRECT hangs on RU DPI/Akamai.
 gog.com
 bethesda.net
 activision.com

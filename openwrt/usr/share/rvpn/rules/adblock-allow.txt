@@ -13,3 +13,7 @@ youtube.googleapis.com
 wide-youtube.l.google.com
 youtube-ui.l.google.com
 jnn-pa.googleapis.com
+# Rockstar Launcher / fraud SDK (must not sink)
+rockstargames.com
+rsg.sc
+online-metrix.net
