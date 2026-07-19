@@ -7,7 +7,7 @@
 |--------|------|------|
 | Рунет, private | DIRECT | geoip / default |
 | Игры (Steam, Epic…) | DIRECT | `games-domains.txt` |
-| YouTube (сайт, API, видео, превью) | **VPN** | `vpn-domains.txt` |
+| YouTube (сайт, API, видео, превью) | **zapret** | `dpi.txt` (nfqws ALT11-like) |
 | Telegram текст + media/стикеры | **VPN** | `vpn-domains.txt` + `vpn-cidr.txt` |
 | SlashLIB / HentaiLIB / MangaLib / atsu.moe | **VPN** | `vpn-domains.txt` |
 | Свои домены (быстрый add) | **VPN** | `vpn-user.txt` (`rvpnctl add-domain`) |
@@ -17,7 +17,7 @@
 | Apple Music artwork + APNs (`push.apple.com`) | **VPN** | `vpn-domains.txt` |
 | Google FCM narrow (`mtalk` / `fcm.*`) — не весь Google | **VPN** | `vpn-domains.txt` |
 | Microsoft WNS (`notify.windows.com` / `wns.windows.com`) | **VPN** | `vpn-domains.txt` |
-| Gemini / ChatGPT / news | **VPN** | `vpn-domains.txt` |
+| Gemini / ChatGPT / news | **VPN** | `vpn-domains.txt` (Gemini companions) |
 | VPN nodes from subscription (Clash/URI) | **VPN outbounds** | UCI `subscription` + [SUBSCRIPTIONS.md](SUBSCRIPTIONS.md) |
 | hdrezka, rutracker, AO3 | **zapret** | `dpi.txt` (nfqws ALT11-like) |
 | реклама / трекеры | **Adblock (DNS)** | dnsmasq `address=/…/0.0.0.0` (OISD small + seed/user/allow) |
