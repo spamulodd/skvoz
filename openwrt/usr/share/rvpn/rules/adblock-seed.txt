@@ -7,7 +7,7 @@ adservice.google.com
 pagead2.googlesyndication.com
 adsystem.amazon.com
 amazon-adsystem.com
-connect.facebook.net
+# connect.facebook.net — DO NOT block (Rockstar/Social Club login captcha hangs)
 scorecardresearch.com
 quantserve.com
 outbrain.com

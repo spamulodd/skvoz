@@ -17,3 +17,14 @@ jnn-pa.googleapis.com
 rockstargames.com
 rsg.sc
 online-metrix.net
+# FB SDK used by Social Club / OneTrust / Arkose login path
+connect.facebook.net
+facebook.com
+facebook.net
+fbcdn.net
+# Arkose FunCaptcha + Castle device checks
+arkoselabs.com
+funcaptcha.com
+castle.io
+cookielaw.org
+onetrust.com

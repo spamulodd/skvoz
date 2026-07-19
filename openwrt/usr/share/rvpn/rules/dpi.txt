@@ -4,6 +4,9 @@
 # Rockstar Launcher / Social Club (real IP; FakeIP breaks obsolete mux.* hosts)
 rockstargames.com
 rsg.sc
+arkoselabs.com
+funcaptcha.com
+castle.io
 # Cinema / trackers
 hdrezka.ag
 hdrezka.me

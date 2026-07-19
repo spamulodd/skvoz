@@ -33,6 +33,12 @@ rockstargames.com
 rsg.sc
 media-rockstargames-com.akamaized.net
 gamedownloads-rockstargames-com.akamaized.net
+# Login captcha / device fingerprint (DIRECT; not FakeIP)
+arkoselabs.com
+funcaptcha.com
+castle.io
+cookielaw.org
+onetrust.com
 gog.com
 bethesda.net
 activision.com
