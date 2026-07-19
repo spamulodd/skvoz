@@ -16,13 +16,32 @@ watchdog_failopen() {
 }
 
 watchdog_loop() {
+	miss=0
 	while true; do
 		sleep 15
 		vpn=$(uci_get vpn_enabled)
-		[ "$vpn" = "1" ] || continue
-		grep -q fakeip /tmp/rvpn/dns.applied 2>/dev/null || continue
+		[ "$vpn" = "1" ] || {
+			miss=0
+			continue
+		}
+		# Ignore brief gap during sb_reload_domains
+		[ -f "$RVPN_SB_RELOAD_LOCK" ] && {
+			miss=0
+			continue
+		}
+		grep -q fakeip /tmp/rvpn/dns.applied 2>/dev/null || {
+			miss=0
+			continue
+		}
 		if [ -z "$(sb_pids)" ]; then
-			watchdog_failopen
+			miss=$((miss + 1))
+			# Require 2 consecutive misses (~30s) so reload/restart does not fail-open
+			if [ "$miss" -ge 2 ]; then
+				watchdog_failopen
+				miss=0
+			fi
+		else
+			miss=0
 		fi
 	done
 }

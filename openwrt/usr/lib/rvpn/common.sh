@@ -10,6 +10,7 @@ RVPN_LOG=/tmp/rvpn/rvpn.log
 RVPN_STATE=/tmp/rvpn/state
 RVPN_WD_PID=$RVPN_RUN/watchdog.pid
 RVPN_SVC_LOCK=$RVPN_RUN/service.lock
+RVPN_SB_RELOAD_LOCK=$RVPN_RUN/sb_reloading
 
 mkdir -p "$RVPN_RUN" 2>/dev/null || true
 chmod 700 "$RVPN_RUN" 2>/dev/null || true

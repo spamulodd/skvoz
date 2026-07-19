@@ -367,14 +367,25 @@ sb_stop() {
 	log "sing-box stopped"
 }
 
-# Reload FakeIP domain lists without full nft/zapret cycle.
+# Reload FakeIP domain lists. Hold reload lock so watchdog does not fail-open
+# during the brief stop/start window, then re-assert FakeIP DNS + TPROXY.
 sb_reload_domains() {
 	vpn=$(uci_get vpn_enabled)
 	[ "$vpn" = "1" ] || {
 		log "vpn disabled — domain list saved, enable VPN to apply"
 		return 0
 	}
-	sb_generate || return 1
+	# shellcheck source=/dev/null
+	. /usr/lib/rvpn/dns.sh
+	# shellcheck source=/dev/null
+	. /usr/lib/rvpn/nft.sh
+
+	mkdir -p "$RVPN_RUN"
+	: >"$RVPN_SB_RELOAD_LOCK"
+	sb_generate || {
+		rm -f "$RVPN_SB_RELOAD_LOCK"
+		return 1
+	}
 	sb_kill_ours
 	# Keep cache.db (store_fakeip). Only flush dnsmasq so LAN gets fresh answers.
 	killall -HUP dnsmasq 2>/dev/null || true
@@ -385,8 +396,13 @@ sb_reload_domains() {
 	sleep 2
 	if [ -z "$(sb_pids)" ]; then
 		log "ERROR: sing-box reload failed"
+		rm -f "$RVPN_SB_RELOAD_LOCK"
 		return 1
 	fi
+	# If a previous reload raced the watchdog, FakeIP/nft may be gone — restore.
+	dns_apply
+	nft_apply_vpn || log "WARN: nft vpn re-apply failed after domain reload"
+	rm -f "$RVPN_SB_RELOAD_LOCK"
 	log "sing-box reloaded (domains)"
 	return 0
 }
