@@ -163,7 +163,7 @@ adblock_ensure_cache() {
 }
 
 adblock_uci_hook_confdir() {
-	# Prefer OpenWrt confdir /tmp/dnsmasq.d
+	# Prefer OpenWrt confdir /tmp/dnsmasq.d (jail-mounted — file must live inside)
 	cur=$(uci -q get dhcp.@dnsmasq[0].confdir)
 	if [ -z "$cur" ]; then
 		uci set dhcp.@dnsmasq[0].confdir='/tmp/dnsmasq.d'
@@ -172,15 +172,43 @@ adblock_uci_hook_confdir() {
 	mkdir -p /tmp/dnsmasq.d
 }
 
-adblock_remove_link() {
+adblock_remove_conf() {
 	rm -f "$ADBLOCK_LINK"
+}
+
+# Install conf as a regular file inside confdir (NOT a symlink to /tmp/rvpn).
+# procd jails dnsmasq with only confdir mounted — symlink targets outside jail break startup.
+adblock_install_conf() {
+	adblock_uci_hook_confdir
+	# drop stale symlink from older builds
+	[ -L "$ADBLOCK_LINK" ] && rm -f "$ADBLOCK_LINK"
+	cp -f "$ADBLOCK_CONF" "$ADBLOCK_LINK"
+	chmod 644 "$ADBLOCK_LINK" 2>/dev/null || true
+}
+
+adblock_dns_restart() {
+	# conf-dir files need a real restart; HUP is not enough
+	/etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
+	# brief wait + recover if conf broke dnsmasq
+	i=0
+	while [ "$i" -lt 8 ]; do
+		if pgrep -x dnsmasq >/dev/null 2>&1 || pgrep dnsmasq >/dev/null 2>&1; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 1
+	done
+	log "adblock: dnsmasq failed to start — removing conf and recovering"
+	adblock_remove_conf
+	/etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
+	return 1
 }
 
 adblock_apply() {
 	mkdir -p "$RVPN_RUN"
 	if ! adblock_enabled; then
-		adblock_remove_link
-		dns_reload
+		adblock_remove_conf
+		adblock_dns_restart || dns_reload
 		log "adblock: off"
 		return 0
 	fi
@@ -189,9 +217,14 @@ adblock_apply() {
 		return 1
 	}
 	n=$(adblock_generate_conf)
-	adblock_uci_hook_confdir
-	ln -sf "$ADBLOCK_CONF" "$ADBLOCK_LINK"
-	dns_reload
+	adblock_install_conf || {
+		log "adblock: install conf failed"
+		return 1
+	}
+	if ! adblock_dns_restart; then
+		log "adblock: apply aborted (dnsmasq recovery)"
+		return 1
+	fi
 	log "adblock: on ($n domains)"
 	return 0
 }
@@ -212,7 +245,7 @@ adblock_status_line() {
 		updated=$(sed -n 's/^updated=//p' "$ADBLOCK_META" | head -1)
 	fi
 	active=0
-	if [ "$en" = "1" ] && { [ -L "$ADBLOCK_LINK" ] || [ -f "$ADBLOCK_LINK" ]; }; then
+	if [ "$en" = "1" ] && [ -f "$ADBLOCK_LINK" ] && [ ! -L "$ADBLOCK_LINK" ]; then
 		active=1
 	fi
 	echo "adblock_enabled=$en active=$active domains=${domains:-0} updated=${updated:-—}"

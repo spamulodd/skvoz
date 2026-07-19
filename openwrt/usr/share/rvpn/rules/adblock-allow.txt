@@ -1,3 +1,15 @@
 # Allowlist — never block (exact or suffix match).
-# Keep analytics that break sites if needed, e.g.:
-# googletagmanager.com
+# YouTube player / CDN (OISD or aggressive seeds must not sink these)
+youtube.com
+youtu.be
+youtube-nocookie.com
+youtubekids.com
+googlevideo.com
+ytimg.com
+ggpht.com
+gvt1.com
+youtubei.googleapis.com
+youtube.googleapis.com
+wide-youtube.l.google.com
+youtube-ui.l.google.com
+jnn-pa.googleapis.com
