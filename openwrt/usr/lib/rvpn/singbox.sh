@@ -124,7 +124,7 @@ sb_generate() {
 		tag_j=$(json_escape "$tag")
 		server_j=$(json_escape "$server")
 		case "$type" in
-		hysteria2)
+		hysteria2|hy2)
 			pw=$(uci -q get "rvpn.$id.password")
 			sni=$(uci -q get "rvpn.$id.sni")
 			[ -n "$sni" ] || sni="$server"
@@ -139,15 +139,93 @@ sb_generate() {
 		vless)
 			uuid=$(uci -q get "rvpn.$id.uuid")
 			sni=$(uci -q get "rvpn.$id.sni")
+			[ -n "$sni" ] || sni="$server"
 			pbk=$(uci -q get "rvpn.$id.reality_public_key")
 			sid=$(uci -q get "rvpn.$id.reality_short_id")
+			flow=$(uci -q get "rvpn.$id.flow")
+			fp=$(uci -q get "rvpn.$id.fingerprint")
+			[ -n "$fp" ] || fp=chrome
+			network=$(uci -q get "rvpn.$id.network")
+			[ -n "$network" ] || network=tcp
+			path=$(uci -q get "rvpn.$id.path")
+			host=$(uci -q get "rvpn.$id.host")
 			uuid_j=$(json_escape "$uuid")
 			sni_j=$(json_escape "$sni")
-			pbk_j=$(json_escape "$pbk")
-			sid_j=$(json_escape "$sid")
-			printf '{"type":"vless","tag":"%s","server":"%s","server_port":%s,"uuid":"%s","packet_encoding":"xudp","tls":{"enabled":true,"server_name":"%s","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"%s","short_id":"%s"}},"flow":"xtls-rprx-vision"}\n' \
-				"$tag_j" "$server_j" "$port" "$uuid_j" "$sni_j" "$pbk_j" "$sid_j" >>"$outbounds_tmp"
+			fp_j=$(json_escape "$fp")
+			tls_extra=
+			flow_json=
+			transport_json=
+			if [ -n "$pbk" ]; then
+				pbk_j=$(json_escape "$pbk")
+				sid_j=$(json_escape "$sid")
+				tls_extra=$(printf ',"reality":{"enabled":true,"public_key":"%s","short_id":"%s"}' "$pbk_j" "$sid_j")
+				[ -n "$flow" ] || flow=xtls-rprx-vision
+			fi
+			[ -n "$flow" ] && flow_json=$(printf ',"flow":"%s"' "$(json_escape "$flow")")
+			case "$network" in
+			ws)
+				path_j=$(json_escape "${path:-/}")
+				if [ -n "$host" ]; then
+					host_j=$(json_escape "$host")
+					transport_json=$(printf ',"transport":{"type":"ws","path":"%s","headers":{"Host":"%s"}}' "$path_j" "$host_j")
+				else
+					transport_json=$(printf ',"transport":{"type":"ws","path":"%s"}' "$path_j")
+				fi
+				;;
+			grpc)
+				svc=$(json_escape "${path:-}")
+				transport_json=$(printf ',"transport":{"type":"grpc","service_name":"%s"}' "$svc")
+				;;
+			esac
+			printf '{"type":"vless","tag":"%s","server":"%s","server_port":%s,"uuid":"%s","packet_encoding":"xudp","tls":{"enabled":true,"server_name":"%s","utls":{"enabled":true,"fingerprint":"%s"}%s}%s%s}\n' \
+				"$tag_j" "$server_j" "$port" "$uuid_j" "$sni_j" "$fp_j" "$tls_extra" "$flow_json" "$transport_json" >>"$outbounds_tmp"
 			echo "$tag" >>"$tags_tmp"
+			;;
+		trojan)
+			pw=$(uci -q get "rvpn.$id.password")
+			sni=$(uci -q get "rvpn.$id.sni")
+			[ -n "$sni" ] || sni="$server"
+			fp=$(uci -q get "rvpn.$id.fingerprint")
+			[ -n "$fp" ] || fp=chrome
+			network=$(uci -q get "rvpn.$id.network")
+			[ -n "$network" ] || network=tcp
+			path=$(uci -q get "rvpn.$id.path")
+			host=$(uci -q get "rvpn.$id.host")
+			pw_j=$(json_escape "$pw")
+			sni_j=$(json_escape "$sni")
+			fp_j=$(json_escape "$fp")
+			transport_json=
+			case "$network" in
+			ws)
+				path_j=$(json_escape "${path:-/}")
+				if [ -n "$host" ]; then
+					host_j=$(json_escape "$host")
+					transport_json=$(printf ',"transport":{"type":"ws","path":"%s","headers":{"Host":"%s"}}' "$path_j" "$host_j")
+				else
+					transport_json=$(printf ',"transport":{"type":"ws","path":"%s"}' "$path_j")
+				fi
+				;;
+			grpc)
+				svc=$(json_escape "${path:-}")
+				transport_json=$(printf ',"transport":{"type":"grpc","service_name":"%s"}' "$svc")
+				;;
+			esac
+			printf '{"type":"trojan","tag":"%s","server":"%s","server_port":%s,"password":"%s","tls":{"enabled":true,"server_name":"%s","utls":{"enabled":true,"fingerprint":"%s"}}%s}\n' \
+				"$tag_j" "$server_j" "$port" "$pw_j" "$sni_j" "$fp_j" "$transport_json" >>"$outbounds_tmp"
+			echo "$tag" >>"$tags_tmp"
+			;;
+		ss|shadowsocks)
+			pw=$(uci -q get "rvpn.$id.password")
+			method=$(uci -q get "rvpn.$id.method")
+			[ -n "$method" ] || method=aes-128-gcm
+			pw_j=$(json_escape "$pw")
+			method_j=$(json_escape "$method")
+			printf '{"type":"shadowsocks","tag":"%s","server":"%s","server_port":%s,"method":"%s","password":"%s"}\n' \
+				"$tag_j" "$server_j" "$port" "$method_j" "$pw_j" >>"$outbounds_tmp"
+			echo "$tag" >>"$tags_tmp"
+			;;
+		*)
+			log "WARN: skip unsupported node type '$type' ($id)"
 			;;
 		esac
 	done

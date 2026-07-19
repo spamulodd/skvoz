@@ -49,10 +49,23 @@ $files = @(
   @{ L = "usr\lib\rvpn\nft.sh"; R = "/usr/lib/rvpn/nft.sh" },
   @{ L = "usr\lib\rvpn\singbox.sh"; R = "/usr/lib/rvpn/singbox.sh" },
   @{ L = "usr\lib\rvpn\zapret.sh"; R = "/usr/lib/rvpn/zapret.sh" },
+  @{ L = "usr\lib\rvpn\adblock.sh"; R = "/usr/lib/rvpn/adblock.sh" },
   @{ L = "usr\lib\rvpn\health.sh"; R = "/usr/lib/rvpn/health.sh" },
+  @{ L = "usr\lib\rvpn\cidr-sync.sh"; R = "/usr/lib/rvpn/cidr-sync.sh" },
+  @{ L = "usr\lib\rvpn\watchdog.sh"; R = "/usr/lib/rvpn/watchdog.sh" },
+  @{ L = "usr\lib\rvpn\sub.sh"; R = "/usr/lib/rvpn/sub.sh" },
+  @{ L = "usr\lib\rvpn\node-pool.sh"; R = "/usr/lib/rvpn/node-pool.sh" },
+  @{ L = "usr\lib\rvpn\clash-parse.awk"; R = "/usr/lib/rvpn/clash-parse.awk" },
   @{ L = "usr\share\rvpn\rules\dpi.txt"; R = "/usr/share/rvpn/rules/dpi.txt" },
+  @{ L = "usr\share\rvpn\rules\adblock-seed.txt"; R = "/usr/share/rvpn/rules/adblock-seed.txt" },
+  @{ L = "usr\share\rvpn\rules\adblock-user.txt"; R = "/usr/share/rvpn/rules/adblock-user.txt" },
+  @{ L = "usr\share\rvpn\rules\adblock-allow.txt"; R = "/usr/share/rvpn/rules/adblock-allow.txt" },
   @{ L = "usr\share\rvpn\rules\vpn-domains.txt"; R = "/usr/share/rvpn/rules/vpn-domains.txt" },
+  @{ L = "usr\share\rvpn\rules\vpn-cidr.txt"; R = "/usr/share/rvpn/rules/vpn-cidr.txt" },
   @{ L = "usr\share\rvpn\rules\games-domains.txt"; R = "/usr/share/rvpn/rules/games-domains.txt" },
+  @{ L = "usr\share\rvpn\rules\ROUTING.md"; R = "/usr/share/rvpn/rules/ROUTING.md" },
+  @{ L = "usr\share\rvpn\rules\SUBSCRIPTIONS.md"; R = "/usr/share/rvpn/rules/SUBSCRIPTIONS.md" },
+  @{ L = "usr\share\rvpn\rules\README.md"; R = "/usr/share/rvpn/rules/README.md" },
   @{ L = "www\rvpn\index.html"; R = "/www/rvpn/index.html" },
   @{ L = "www\rvpn\cgi-bin\rvpn.cgi"; R = "/www/rvpn/cgi-bin/rvpn.cgi" }
 )
@@ -63,20 +76,36 @@ foreach ($f in $files) {
   Send-TextFile $lp $f.R
 }
 
-# optional nfqws binary (mipsel)
-$nfqLocal = Join-Path $OpenWrt "usr\share\rvpn\bin\nfqws"
-if (Test-Path $nfqLocal) {
-  Write-Host "Upload nfqws binary..."
-  $bytes = [IO.File]::ReadAllBytes($nfqLocal)
+function Send-BinaryFile([string]$LocalPath, [string]$RemotePath) {
+  $bytes = [IO.File]::ReadAllBytes($LocalPath)
   $b64 = [Convert]::ToBase64String($bytes)
-  Invoke-Router "rm -f /tmp/nfqws.b64 /opt/rvpn/nfqws"
+  $tmpB64 = "$RemotePath.b64"
+  Invoke-Router "rm -f '$RemotePath' '$tmpB64'"
   $chunkSize = 900
   for ($i = 0; $i -lt $b64.Length; $i += $chunkSize) {
     $len = [Math]::Min($chunkSize, $b64.Length - $i)
     $part = $b64.Substring($i, $len)
-    Invoke-Router "printf '%s' '$part' >> /tmp/nfqws.b64"
+    Invoke-Router "printf '%s' '$part' >> '$tmpB64'"
   }
-  Invoke-Router "base64 -d /tmp/nfqws.b64 > /opt/rvpn/nfqws && chmod +x /opt/rvpn/nfqws && cp -f /opt/rvpn/nfqws /usr/share/rvpn/bin/nfqws"
+  Invoke-Router "base64 -d '$tmpB64' > '$RemotePath' && rm -f '$tmpB64'"
+}
+
+# ALT11 fake TLS/HTTP payloads for nfqws
+Invoke-Router "mkdir -p /usr/share/rvpn/fake"
+foreach ($bin in @("stun.bin", "tls_clienthello_max_ru.bin", "tls_clienthello_www_google_com.bin")) {
+  $lp = Join-Path $OpenWrt "usr\share\rvpn\fake\$bin"
+  if (Test-Path $lp) {
+    Write-Host "Upload fake/$bin"
+    Send-BinaryFile $lp "/usr/share/rvpn/fake/$bin"
+  }
+}
+
+# optional nfqws binary (mipsel)
+$nfqLocal = Join-Path $OpenWrt "usr\share\rvpn\bin\nfqws"
+if (Test-Path $nfqLocal) {
+  Write-Host "Upload nfqws binary..."
+  Send-BinaryFile $nfqLocal "/opt/rvpn/nfqws"
+  Invoke-Router "chmod +x /opt/rvpn/nfqws && mkdir -p /usr/share/rvpn/bin && cp -f /opt/rvpn/nfqws /usr/share/rvpn/bin/nfqws"
 }
 
 Write-Host "Permissions + uhttpd :81..."

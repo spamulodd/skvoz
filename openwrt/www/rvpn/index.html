@@ -290,6 +290,7 @@
   .layer.direct { color: var(--muted); }
   .layer.zapret { color: var(--warn); }
   .layer.vpn { color: var(--sky); }
+  .layer.adblock { color: var(--ok); }
 
   .log-box {
     margin-top: 1rem;
@@ -362,7 +363,7 @@
       <div class="toggle-row">
         <div>
           <h2>Zapret (DPI)</h2>
-          <p>hdrezka, rutracker (DPI)</p>
+          <p>hdrezka, rutracker, AO3 (DPI)</p>
         </div>
         <button class="switch" id="sw-zapret" type="button" role="switch" aria-checked="false" aria-label="Zapret"><i></i></button>
       </div>
@@ -372,6 +373,13 @@
           <p>YouTube, Telegram media, Instagram, Discord, TikTok, AI</p>
         </div>
         <button class="switch" id="sw-vpn" type="button" role="switch" aria-checked="false" aria-label="VPN"><i></i></button>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <h2>Adblock (DNS)</h2>
+          <p>Реклама и трекеры → 0.0.0.0 (до FakeIP)</p>
+        </div>
+        <button class="switch" id="sw-adblock" type="button" role="switch" aria-checked="false" aria-label="Adblock"><i></i></button>
       </div>
     </div>
   </section>
@@ -388,6 +396,7 @@
       <button class="btn" id="btn-restart" type="button">Перезапуск</button>
       <button class="btn danger" id="btn-stop" type="button">Стоп (fail-open)</button>
       <button class="btn" id="btn-log" type="button">Лог</button>
+      <button class="btn" id="btn-load" type="button">Нагрузка</button>
       <button class="btn" id="btn-ping" type="button">Ping узла</button>
     </div>
 
@@ -401,10 +410,14 @@
           <tr><td>ya.ru, vk, банки, Рунет</td><td><span class="layer direct">DIRECT</span></td></tr>
           <tr><td>Steam, игровые серверы</td><td><span class="layer direct">DIRECT</span></td></tr>
           <tr><td>YouTube (сайт, API, видео, превью)</td><td><span class="layer vpn">VPN</span></td></tr>
-          <tr><td>hdrezka, rutracker</td><td><span class="layer zapret">zapret</span></td></tr>
+          <tr><td>hdrezka, rutracker, AO3</td><td><span class="layer zapret">zapret</span></td></tr>
+          <tr><td>реклама / трекеры</td><td><span class="layer adblock">Adblock (DNS)</span></td></tr>
           <tr><td>Telegram (+ media CIDR)</td><td><span class="layer vpn">VPN</span></td></tr>
           <tr><td>Instagram, Facebook, WhatsApp</td><td><span class="layer vpn">VPN</span></td></tr>
           <tr><td>Discord, TikTok, X</td><td><span class="layer vpn">VPN</span></td></tr>
+          <tr><td>Spotify (сайт + обложки CDN)</td><td><span class="layer vpn">VPN</span></td></tr>
+          <tr><td>Twitch, SoundCloud, Reddit</td><td><span class="layer vpn">VPN</span></td></tr>
+          <tr><td>Patreon, Apple Music artwork</td><td><span class="layer vpn">VPN</span></td></tr>
           <tr><td>Gemini, ChatGPT</td><td><span class="layer vpn">VPN</span></td></tr>
           <tr><td>meduza, bbc, dw</td><td><span class="layer vpn">VPN</span></td></tr>
           <tr><td>SlashLIB, HentaiLIB, MangaLib, atsu.moe</td><td><span class="layer vpn">VPN</span></td></tr>
@@ -443,6 +456,7 @@
   const statusRow = document.getElementById('status-row');
   const swZapret = document.getElementById('sw-zapret');
   const swVpn = document.getElementById('sw-vpn');
+  const swAdblock = document.getElementById('sw-adblock');
   const nodeName = document.getElementById('node-name');
   const nodeLatency = document.getElementById('node-latency');
   const logBox = document.getElementById('log-box');
@@ -494,11 +508,22 @@
     statusRow.appendChild(badge('WAN ' + (j.wan_ok ? 'OK' : 'DOWN'), j.wan_ok ? 'ok' : 'bad'));
     statusRow.appendChild(badge('zapret ' + (j.zapret_running ? 'run' : 'off'), j.zapret_running ? 'ok' : 'bad'));
     statusRow.appendChild(badge('VPN ' + (j.vpn_running ? 'run' : 'off'), j.vpn_running ? 'ok' : 'bad'));
+    const adbOn = j.adblock_enabled == 1;
+    const adbDom = j.adblock_domains | 0;
+    statusRow.appendChild(badge(
+      adbOn ? ('adblock ' + (j.adblock_running ? adbDom || 'on' : '…')) : 'adblock off',
+      adbOn && j.adblock_running ? 'ok' : (adbOn ? 'neutral' : 'bad')
+    ));
     const memMb = Math.round((j.mem_available_kb || 0) / 1024);
     statusRow.appendChild(badge('RAM ' + memMb + ' MB', memMb > 32 ? 'ok' : 'bad'));
+    const load = (j.loadavg_x100 || 0) / 100;
+    statusRow.appendChild(badge('load ' + load.toFixed(2), load < 1.5 ? 'ok' : 'bad'));
+    const lan = j.lan_clients | 0;
+    statusRow.appendChild(badge('LAN ' + lan, lan > 0 ? 'ok' : 'neutral'));
 
     setSwitch(swZapret, j.zapret_enabled == 1);
     setSwitch(swVpn, j.vpn_enabled == 1);
+    setSwitch(swAdblock, adbOn);
 
     nodeName.textContent = j.node_now || '—';
     const ms = j.node_delay_ms | 0;
@@ -526,8 +551,10 @@
       const j = JSON.parse(raw.trim().split('\n')[0]);
       setSwitch(swZapret, j.zapret_enabled == 1);
       setSwitch(swVpn, j.vpn_enabled == 1);
-      // Running flags update after async restart
-      await new Promise(function (r) { setTimeout(r, 2500); });
+      if (j.adblock_enabled != null) setSwitch(swAdblock, j.adblock_enabled == 1);
+      // Adblock applies without full service restart
+      const wait = layer === 'adblock' ? 1200 : 2500;
+      await new Promise(function (r) { setTimeout(r, wait); });
       await refresh();
     } catch (e) {
       await refresh();
@@ -542,6 +569,10 @@
 
   swVpn.addEventListener('click', function () {
     setLayer('vpn', !swVpn.classList.contains('on'), swVpn);
+  });
+
+  swAdblock.addEventListener('click', function () {
+    setLayer('adblock', !swAdblock.classList.contains('on'), swAdblock);
   });
 
   document.getElementById('btn-refresh').addEventListener('click', refresh);
@@ -578,6 +609,16 @@
     logOut.textContent = 'Загрузка…';
     try {
       logOut.textContent = await api('log') || '(пусто)';
+    } catch (e) {
+      logOut.textContent = 'Ошибка: ' + e;
+    }
+  });
+
+  document.getElementById('btn-load').addEventListener('click', async function () {
+    logBox.classList.add('open');
+    logOut.textContent = 'Загрузка выборки…';
+    try {
+      logOut.textContent = await api('load') || '(пусто)';
     } catch (e) {
       logOut.textContent = 'Ошибка: ' + e;
     }

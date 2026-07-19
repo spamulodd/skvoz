@@ -1,0 +1,3 @@
+# User DNS block list (one domain per line). Merged with OISD/seed.
+# Example:
+# ads.example.com

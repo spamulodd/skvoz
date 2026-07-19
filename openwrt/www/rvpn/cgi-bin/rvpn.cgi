@@ -2,6 +2,7 @@
 . /usr/lib/rvpn/common.sh
 . /usr/lib/rvpn/health.sh
 . /usr/lib/rvpn/singbox.sh
+. /usr/lib/rvpn/adblock.sh
 
 qs=${QUERY_STRING:-status}
 cmd=${qs%%&*}
@@ -70,19 +71,35 @@ set)
 	layer=$(get_arg layer)
 	on=$(norm_bool "$(get_arg on)")
 	case "$layer" in
-	zapret) uci set rvpn.main.zapret_enabled="$on" ;;
-	vpn) uci set rvpn.main.vpn_enabled="$on" ;;
+	zapret)
+		uci set rvpn.main.zapret_enabled="$on"
+		uci commit rvpn
+		svc_async restart
+		;;
+	vpn)
+		uci set rvpn.main.vpn_enabled="$on"
+		uci commit rvpn
+		svc_async restart
+		;;
+	adblock)
+		uci set rvpn.main.adblock_enabled="$on"
+		uci commit rvpn
+		(
+			rvpn_with_lock /bin/sh -c '. /usr/lib/rvpn/adblock.sh; . /usr/lib/rvpn/health.sh; adblock_apply; health_cron_install' >>"$RVPN_LOG" 2>&1
+		) &
+		;;
 	*)
 		text_hdr
 		echo "bad layer"
 		exit 0
 		;;
 	esac
-	uci commit rvpn
-	svc_async restart
 	json_hdr
-	printf '{"ok":1,"async":1,"zapret_enabled":%s,"vpn_enabled":%s,"zapret_running":0,"vpn_running":0}\n' \
-		"$(uci_get zapret_enabled)" "$(uci_get vpn_enabled)"
+	adb=$(uci_get adblock_enabled)
+	adb_dom=0
+	[ -f /tmp/rvpn/adblock.meta ] && adb_dom=$(sed -n 's/^domains=//p' /tmp/rvpn/adblock.meta | head -1)
+	printf '{"ok":1,"async":1,"zapret_enabled":%s,"vpn_enabled":%s,"adblock_enabled":%s,"adblock_domains":%s,"zapret_running":0,"vpn_running":0}\n' \
+		"$(uci_get zapret_enabled)" "$(uci_get vpn_enabled)" "${adb:-0}" "${adb_dom:-0}"
 	;;
 stop)
 	require_auth
@@ -100,6 +117,13 @@ log)
 	require_auth
 	text_hdr
 	tail -n 120 "$RVPN_LOG" 2>/dev/null
+	;;
+load)
+	require_auth
+	text_hdr
+	health_load_sample 2>/dev/null || true
+	echo "# ts load_x100 mem_avail_kb mem_total_kb lan_clients wan_rx wan_tx vpn zap"
+	tail -n 48 "$RVPN_LOAD_LOG" 2>/dev/null || echo "(no samples yet)"
 	;;
 ping)
 	require_auth

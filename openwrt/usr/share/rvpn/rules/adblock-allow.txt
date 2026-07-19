@@ -1,0 +1,3 @@
+# Allowlist — never block (exact or suffix match).
+# Keep analytics that break sites if needed, e.g.:
+# googletagmanager.com

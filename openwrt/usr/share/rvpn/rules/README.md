@@ -7,9 +7,15 @@
 | File | Layer |
 |------|-------|
 | `games-domains.txt` | DIRECT (games) |
-| `vpn-domains.txt` | VPN FakeIP (shipped) |
+| `vpn-domains.txt` | VPN FakeIP (shipped; includes notify/CDN companions) |
 | `vpn-user.txt` | VPN FakeIP (quick-add: `rvpnctl add-domain`) |
-| `vpn-cidr.txt` | VPN IP (Telegram DC/media, Meta); sync: `tools/sync-telegram-cidr.sh` |
-| `dpi.txt` | zapret / nfqws (DPI bypass) |
+| `vpn-cidr.txt` | VPN IP (Telegram/Meta/X/Discord ASN); sync: `tools/sync-vpn-cidr.sh` / `rvpnctl sync-cidr` |
+| `dpi.txt` | zapret / nfqws (DPI bypass; ALT11-like strategy) |
+| `adblock-seed.txt` | DNS adblock offline seed (trackers) |
+| `adblock-user.txt` | DNS adblock manual block list |
+| `adblock-allow.txt` | DNS adblock allowlist (exceptions) |
+| `../fake/*.bin` | nfqws fake TLS/HTTP payloads (max_ru, stun) |
 | `doh-hosts.txt` | DoH domains (reference) |
 | `doh-cidr.txt` | DoH resolver IPs (reference) |
+| `SUBSCRIPTIONS.md` | VPN node subscription import / pool (Clash Meta) |
+| `ROUTING.md` | Resource → layer matrix |

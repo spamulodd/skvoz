@@ -1,32 +1,19 @@
 # Hard-block → VPN (FakeIP). Shipped lists — no manual shunt.
+# Prefer apex (domain_suffix); avoid redundant www / mega-CDNs (cloudflare/akamai/googleapis wholesale).
 # --- YouTube (full stack: page + API + video + thumbs) ---
 youtube.com
 youtu.be
 yt.be
 youtube-nocookie.com
 youtubekids.com
-www.youtube.com
-m.youtube.com
-music.youtube.com
-studio.youtube.com
-tv.youtube.com
-kids.youtube.com
 youtubei.googleapis.com
 youtube.googleapis.com
 googlevideo.com
 wide-youtube.l.google.com
 youtube-ui.l.google.com
 ytimg.com
-i.ytimg.com
-s.ytimg.com
 ggpht.com
-yt3.ggpht.com
 googleusercontent.com
-yt3.googleusercontent.com
-lh3.googleusercontent.com
-lh4.googleusercontent.com
-lh5.googleusercontent.com
-lh6.googleusercontent.com
 jnn-pa.googleapis.com
 # --- Telegram (domains + CDN; DC/media IPs also in vpn-cidr.txt) ---
 telegram.org
@@ -35,29 +22,21 @@ telegra.ph
 tdesktop.com
 telegram.me
 telegram.dog
-web.telegram.org
-api.telegram.org
-core.telegram.org
 cdn-telegram.org
 telegramcdn.org
 telegram-cdn.org
-cdn.telegram.org
-venus.web.telegram.org
-pluto.web.telegram.org
-flora.web.telegram.org
-vesta.web.telegram.org
-aurora.web.telegram.org
 telesco.pe
 legra.ph
 graph.org
 telegram.space
-translations.telegram.org
-# --- Meta ---
+# --- Meta / Instagram / WhatsApp / Facebook (site + CDN + MQTT/push edges) ---
 instagram.com
 cdninstagram.com
 facebook.com
 fb.com
 fbcdn.net
+fbsbx.com
+fb.me
 meta.com
 threads.net
 threads.com
@@ -72,7 +51,7 @@ twimg.com
 t.co
 pscp.tv
 tweetdeck.com
-# --- Discord ---
+# --- Discord (gateway/media via apex; activities companion) ---
 discord.com
 discord.gg
 discordapp.com
@@ -80,7 +59,9 @@ discord.media
 discordapp.net
 discordstatus.com
 discord.co
-# --- TikTok ---
+discord-activities.com
+discord-attachments-uploads-prd.storage.googleapis.com
+# --- TikTok (CDN + ByteDance overseas / notify companions) ---
 tiktok.com
 tiktokv.com
 tiktokcdn.com
@@ -90,6 +71,36 @@ tiktokv.eu
 musical.ly
 byteoversea.com
 ibytedtos.com
+ttlivecdn.com
+tiktokglobalshop.com
+snssdk.com
+isnssdk.com
+capcut.com
+# --- Spotify (covers: scdn/spotifycdn; audio edges) ---
+spotify.com
+spoti.fi
+scdn.co
+spotifycdn.com
+spotifycdn.net
+pscdn.co
+audio-ak-spotify-com.akamaized.net
+heads-ak-spotify-com.akamaized.net
+# --- Twitch ---
+twitch.tv
+twitchcdn.net
+ttvnw.net
+jtvnw.net
+ttvstatic.com
+ext-twitch.tv
+# --- SoundCloud ---
+soundcloud.com
+sndcdn.com
+# --- Reddit ---
+reddit.com
+redd.it
+redditmedia.com
+redditstatic.com
+reddituploads.com
 # --- AI ---
 gemini.google.com
 bard.google.com
@@ -100,9 +111,6 @@ aistudio.google.com
 openai.com
 chatgpt.com
 oaiusercontent.com
-chat.openai.com
-api.openai.com
-platform.openai.com
 anthropic.com
 claude.ai
 perplexity.ai
@@ -124,36 +132,48 @@ washingtonpost.com
 apnews.com
 # --- Bug bounty / security (often CF/geo issues from RU) ---
 immunefi.com
-# --- Patreon (site + API + media CDN; domain_suffix covers *.patreon*) ---
+# --- Patreon ---
 patreon.com
-www.patreon.com
 patreonusercontent.com
+# --- Apple (Music artwork + APNs push) ---
+music.apple.com
+itunes.apple.com
+mzstatic.com
+push.apple.com
+# --- Google push (narrow FCM / mtalk only — not all Google) ---
+mtalk.google.com
+fcm.googleapis.com
+fcmregistrations.googleapis.com
+firebaseinstallations.googleapis.com
+firebase-settings.crashlytics.com
+# --- Microsoft WNS (Windows toast / app push) ---
+notify.windows.com
+wns.windows.com
+# --- Notion / Figma / Canva (CDN companions) ---
+notion.so
+notion.site
+notionusercontent.com
+figma.com
+figmacdn.com
+canva.com
+canva-apps.com
+# --- LinkedIn ---
+linkedin.com
+licdn.com
+lnkd.in
+# --- Misc often geo/CF-blocked ---
+medium.com
+# --- nhentai (site + image CDN i*/t*.nhentai.net) ---
+nhentai.net
 # --- Geo-blocked manga / LIB family / atsu ---
 atsu.moe
 hentailib.me
-www.hentailib.me
 hentailib.org
-v1.hentailib.org
 slashlib.me
-www.slashlib.me
-v2.slashlib.me
-v1.slashlib.me
-v2.shlib.life
-www.shlib.life
 shlib.life
-v1.shlib.life
 mangalib.me
-www.mangalib.me
 mangalib.org
 ranobelib.me
-www.ranobelib.me
 yaoilib.me
 lib.social
-app.lib.social
-img.lib.social
-static.lib.social
-cover.imglib.info
-img2.imglib.info
 imglib.info
-services.lib.social
-

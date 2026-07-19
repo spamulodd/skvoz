@@ -49,6 +49,13 @@ skvoz_postinst() {
 
 	/etc/init.d/uhttpd restart 2>/dev/null || true
 	/etc/init.d/rvpn enable
+	# Hourly load samples for stress/ops (idempotent)
+	if [ -f /usr/lib/rvpn/health.sh ]; then
+		# shellcheck disable=SC1091
+		. /usr/lib/rvpn/common.sh
+		. /usr/lib/rvpn/health.sh
+		health_cron_install 2>/dev/null || true
+	fi
 	# Fresh install marker: if layers never configured, leave config defaults (off)
 	/etc/init.d/rvpn stop 2>/dev/null || true
 }

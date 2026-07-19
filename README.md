@@ -169,7 +169,8 @@ rvpnctl enable-zapret
 | `doh-cidr.txt` | блок публичных DoH |
 
 ```sh
-sh tools/sync-telegram-cidr.sh   # обновить Telegram CIDR
+sh tools/sync-vpn-cidr.sh        # обновить VPN CIDR (Telegram + Meta/X/Discord ASN)
+# на роутере: rvpnctl sync-cidr  (еженедельный cron skvoz-cidr)
 ```
 
 ## `rvpnctl`

@@ -12,6 +12,7 @@ USE_PROCD=0
 . /usr/lib/rvpn/zapret.sh
 . /usr/lib/rvpn/health.sh
 . /usr/lib/rvpn/watchdog.sh
+. /usr/lib/rvpn/adblock.sh
 
 start_service() {
 	mkdir -p "$RVPN_RUN"
@@ -19,6 +20,7 @@ start_service() {
 	log "start requested"
 	ensure_ui_secret >/dev/null || log "WARN: ui_secret not ready"
 	ensure_clash_secret >/dev/null || log "WARN: clash_secret not ready"
+	health_cron_install 2>/dev/null || true
 	health_preflight || return 1
 
 	zap=$(uci_get zapret_enabled)
@@ -29,6 +31,8 @@ start_service() {
 		log "both layers off"
 		echo stopped >"$RVPN_STATE"
 		watchdog_stop
+		# Adblock is independent of vpn/zapret
+		adblock_apply 2>/dev/null || true
 		return 0
 	fi
 
@@ -54,6 +58,7 @@ start_service() {
 	dns_apply
 	nft_apply_quic
 	nft_apply_doh
+	adblock_apply 2>/dev/null || true
 
 	if ! wan_ok; then
 		log "CRITICAL: WAN broke — cleanup"
@@ -82,6 +87,8 @@ stop_service() {
 	sb_kill_ours
 	rm -f "$RVPN_RUN/sing-box.pid" "$RVPN_RUN/nfqws.pid" 2>/dev/null || true
 	dns_restore
+	# Keep DNS adblock if still enabled; otherwise remove conf link
+	adblock_apply 2>/dev/null || true
 	echo stopped >"$RVPN_STATE"
 	log "stop done (fail-open)"
 }

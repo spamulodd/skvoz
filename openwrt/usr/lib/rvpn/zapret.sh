@@ -71,12 +71,27 @@ zapret_start() {
 	zapret_kill_ours
 	sleep 1
 
-	fake_tls=""
-	[ -f /opt/zapret/files/fake/tls_clienthello_www_google_com.bin ] && \
-		fake_tls="--dpi-desync-fake-tls=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin"
-	[ -z "$fake_tls" ] && [ -f /usr/share/rvpn/fake/tls_clienthello_www_google_com.bin ] && \
-		fake_tls="--dpi-desync-fake-tls=/usr/share/rvpn/fake/tls_clienthello_www_google_com.bin"
+	# Fake payloads — prefer ALT11 (max_ru + stun), else google clienthello.
+	fake_args=""
+	fake_dir=""
+	for d in /usr/share/rvpn/fake /opt/zapret/files/fake /opt/rvpn/fake; do
+		[ -d "$d" ] && fake_dir="$d" && break
+	done
+	if [ -n "$fake_dir" ]; then
+		[ -f "$fake_dir/stun.bin" ] && \
+			fake_args="$fake_args --dpi-desync-fake-tls=$fake_dir/stun.bin"
+		if [ -f "$fake_dir/tls_clienthello_max_ru.bin" ]; then
+			fake_args="$fake_args --dpi-desync-fake-tls=$fake_dir/tls_clienthello_max_ru.bin"
+			fake_args="$fake_args --dpi-desync-fake-http=$fake_dir/tls_clienthello_max_ru.bin"
+			fake_args="$fake_args --dpi-desync-split-seqovl-pattern=$fake_dir/tls_clienthello_max_ru.bin"
+		elif [ -f "$fake_dir/tls_clienthello_www_google_com.bin" ]; then
+			fake_args="$fake_args --dpi-desync-fake-tls=$fake_dir/tls_clienthello_www_google_com.bin"
+			fake_args="$fake_args --dpi-desync-split-seqovl-pattern=$fake_dir/tls_clienthello_www_google_com.bin"
+		fi
+	fi
 
+	# Strategy from zapret-discord-youtube «general (ALT11).bat» TCP hostlist line:
+	# fake,multisplit + seqovl=664 + split-pos=1 + fooling=ts + repeats=8
 	# shellcheck disable=SC2086
 	"$b" \
 		--daemon \
@@ -85,10 +100,11 @@ zapret_start() {
 		--filter-tcp=80,443 \
 		--hostlist="$hl" \
 		--dpi-desync=fake,multisplit \
-		--dpi-desync-split-pos=1,midsld \
-		--dpi-desync-fooling=md5sig \
+		--dpi-desync-split-seqovl=664 \
+		--dpi-desync-split-pos=1 \
+		--dpi-desync-fooling=ts \
 		--dpi-desync-repeats=8 \
-		$fake_tls \
+		$fake_args \
 		>/tmp/rvpn/nfqws.log 2>&1
 
 	sleep 2

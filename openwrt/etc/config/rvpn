@@ -14,7 +14,13 @@ config rvpn 'main'
 	option urltest_url 'https://www.gstatic.com/generate_204'
 	option urltest_interval '2m'
 	option urltest_tolerance '100'
+	option pool_keep '6'
+	option pool_min_alive '2'
+	option pool_probe_timeout_ms '5000'
 	option zapret_qnum '200'
+	option adblock_enabled '0'
+	option adblock_list_url 'https://small.oisd.nl/'
+	option adblock_update_hours '24'
 	option log_level 'warn'
 
 config node 'vps_hy2'
@@ -26,3 +32,20 @@ config node 'vps_hy2'
 	option password 'YOUR_HY2_PASSWORD'
 	option sni 'bing.com'
 	option insecure '0'
+
+# Clash Meta / URI subscription (disabled until URL is set).
+# Set URL (do not commit live tokens):
+#   uci set rvpn.sub1.url='https://YOUR_PANEL/TOKEN'
+#   uci set rvpn.sub1.enabled='1'
+#   uci commit rvpn
+#   rvpnctl sub-import sub1
+#   rvpnctl enable-vpn   # or restart if already on
+# Optional: rvpnctl pool-optimize && rvpnctl restart
+config subscription 'sub1'
+	option enabled '0'
+	option url ''
+	option ua 'clash.meta'
+	option refresh_hours '12'
+	option max_nodes '24'
+	option prefer 'vless-reality,hysteria2,trojan,vless-ws,vless-grpc,vless,ss'
+	option skip_keywords 'expire,剩余,流量,官网,套餐'

@@ -1,4 +1,5 @@
 # Zapret DPI — only what still works well on real IPs with nfqws.
+# Strategy aligned with zapret-discord-youtube «general (ALT11)» (fake+multisplit, fooling=ts).
 # YouTube player/API/CDN moved to vpn-domains (FakeIP) — SPA "no internet" otherwise.
 # Cinema / trackers
 hdrezka.ag
@@ -12,3 +13,6 @@ rutracker.org
 rutracker.net
 rutracker.nl
 nnmclub.to
+# Fanfiction / AO3
+archiveofourown.org
+ao3.org

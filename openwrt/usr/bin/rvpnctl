@@ -5,6 +5,10 @@
 . /usr/lib/rvpn/singbox.sh
 . /usr/lib/rvpn/zapret.sh
 . /usr/lib/rvpn/health.sh
+. /usr/lib/rvpn/cidr-sync.sh
+. /usr/lib/rvpn/sub.sh
+. /usr/lib/rvpn/node-pool.sh
+. /usr/lib/rvpn/adblock.sh
 
 cmd=${1:-status}
 
@@ -19,6 +23,7 @@ status)
 	echo "zapret_enabled=$(uci -q get rvpn.main.zapret_enabled)"
 	echo "vpn_enabled=$(uci -q get rvpn.main.vpn_enabled)"
 	echo "disable_quic=$(uci -q get rvpn.main.disable_quic)"
+	adblock_status_line
 	echo "dns_mode=$(cat /tmp/rvpn/dns.applied 2>/dev/null || echo off)"
 	if [ -f /tmp/rvpn/nfqws.pid ] && kill -0 "$(cat /tmp/rvpn/nfqws.pid 2>/dev/null)" 2>/dev/null; then
 		echo "nfqws: running pid=$(cat /tmp/rvpn/nfqws.pid)"
@@ -59,6 +64,25 @@ disable-vpn)
 	uci commit rvpn
 	svc restart
 	;;
+enable-adblock)
+	uci set rvpn.main.adblock_enabled='1'
+	uci commit rvpn
+	adblock_apply || { echo FAIL; exit 1; }
+	health_cron_install 2>/dev/null || true
+	echo OK
+	;;
+disable-adblock)
+	uci set rvpn.main.adblock_enabled='0'
+	uci commit rvpn
+	adblock_apply && echo OK || { echo FAIL; exit 1; }
+	;;
+adblock-update)
+	adblock_update && echo OK || { echo FAIL; exit 1; }
+	;;
+
+adblock-status)
+	adblock_status_line
+	;;
 gen-config)
 	sb_generate && echo "OK $RVPN_SB_JSON" || echo FAIL
 	;;
@@ -84,8 +108,42 @@ ui-secret)
 log)
 	tail -n "${2:-80}" "$RVPN_LOG" 2>/dev/null
 	;;
+load)
+	# Take a sample now, then show recent hourly history
+	health_load_sample
+	echo "# ts load_x100 mem_avail_kb mem_total_kb lan_clients wan_rx wan_tx vpn zap"
+	tail -n "${2:-48}" "$RVPN_LOAD_LOG" 2>/dev/null || echo "(no samples yet)"
+	;;
+sync-cidr)
+	cidr_sync_run && echo OK || { echo FAIL; exit 1; }
+	;;
+sub-refresh)
+	# Refresh one subscription id, or all enabled
+	if [ -n "$2" ]; then
+		sub_refresh "$2" && echo OK || { echo FAIL; exit 1; }
+	else
+		sub_refresh_all && echo OK || { echo FAIL; exit 1; }
+	fi
+	;;
+sub-import)
+	# Alias: refresh + print last_count (does not restart VPN)
+	sid=$2
+	[ -n "$sid" ] || { echo "Usage: rvpnctl sub-import <subscription_id>"; exit 1; }
+	n=$(sub_refresh "$sid") || { echo FAIL; exit 1; }
+	echo "OK imported=$n"
+	;;
+nodes-probe)
+	pool_probe_all || { echo FAIL; exit 1; }
+	echo "# delay_ms tag id"
+	cat "$RVPN_RUN/pool/delays.tsv" 2>/dev/null
+	;;
+pool-optimize)
+	# Probe + enable best keep / disable dead; does not auto-restart
+	pool_run || { echo FAIL; exit 1; }
+	echo "HINT: rvpnctl restart  # apply enabled set"
+	;;
 *)
-	echo "Usage: rvpnctl status|start|stop|restart|enable-zapret|disable-zapret|enable-vpn|disable-vpn|gen-config|add-domain|del-domain|list-domains|ui-secret|log"
+	echo "Usage: rvpnctl status|start|stop|restart|enable-zapret|disable-zapret|enable-vpn|disable-vpn|enable-adblock|disable-adblock|adblock-update|adblock-status|gen-config|add-domain|del-domain|list-domains|ui-secret|log|load|sync-cidr|sub-refresh|sub-import|nodes-probe|pool-optimize"
 	exit 1
 	;;
 esac
