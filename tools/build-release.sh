@@ -198,7 +198,8 @@ SKVOZ_EDITION=standard curl -fsSL https://raw.githubusercontent.com/spamulodd/sk
 
 - **nfqws** в архивах нет — качается под архитектуру роутера при install / \`rvpnctl nfqws-fetch\`.
 - Если GitHub режет провайдер: поставьте VPN в мастере → «Списки» / \`rvpnctl zapret-sync\`.
-- Обновление без wipe конфига: \`rvpnctl update\` (подтянет тот же edition из VERSION/EDITION если задан).
+- **Апстор через VPN:** после enable-vpn \`rvpnctl update\` / sync идут через sing-box mixed \`127.0.0.1:10808\` (GitHub в VPN-списке). Без VPN — \`update.pending\`, повтор после VPN.
+- Обновление без wipe конфига: \`rvpnctl update\` (тот же edition из \`/usr/share/rvpn/EDITION\`).
 
 ## Размеры этой сборки
 
