@@ -59,17 +59,57 @@ flowchart TB
 - `nfqws` под вашу CPU → `/opt/rvpn/nfqws` (в пакет не входит)
 - `libnetfilter-queue`, `kmod-nft-queue`, `kmod-nft-tproxy`
 
-## Установка
+## Установка (одна команда на роутере)
+
+Нужен root и доступ в интернет (если GitHub режет — `SKVOZ_URL` / зеркало).
 
 ```sh
-git clone https://github.com/spamulodd/skvoz.git && cd skvoz
-sh tools/install.sh
+# обычный роутер (edition=standard)
+curl -fsSL https://raw.githubusercontent.com/spamulodd/skvoz/main/tools/install.sh | sh
+
+# мало flash
+SKVOZ_EDITION=tiny curl -fsSL https://raw.githubusercontent.com/spamulodd/skvoz/main/tools/install.sh | sh
+SKVOZ_EDITION=slim curl -fsSL https://raw.githubusercontent.com/spamulodd/skvoz/main/tools/install.sh | sh
+
+# полный пакет + docs
+SKVOZ_EDITION=full curl -fsSL https://raw.githubusercontent.com/spamulodd/skvoz/main/tools/install.sh | sh
 ```
 
-Через tarball: `SKVOZ_TARBALL=/tmp/skvoz-*.tar.gz sh tools/install.sh`
+| Edition | Flash | Состав |
+|---------|-------|--------|
+| **tiny** | 8–16 MB впритык | 1 стратегия ALT11, минимум списков |
+| **slim** | 16–32 MB | 4 стратегии + list-general |
+| **standard** | обычно | все стратегии Flowseal |
+| **full** | запас / USB | standard + markdown docs |
 
-`.ipk`: `sh tools/mkipk.sh` → `opkg install …`  
-SDK: см. `package/skvoz/Makefile`.
+Подробно: [`tools/release-editions.md`](tools/release-editions.md).
+
+Скрипт скачает `skvoz-VERSION-<edition>.tar.gz`, поставит deps, `nfqws` по arch, напечатает UI URL + Password → мастер в браузере.
+
+```sh
+git clone https://github.com/spamulodd/skvoz.git && cd skvoz && sh tools/install.sh
+SKVOZ_URL='https://…/skvoz-0.2.0-slim.tar.gz' sh install.sh
+```
+
+### Обновления («апстор») через VPN
+
+GitHub часто режется DPI. Когда VPN включён, `rvpnctl update`, `zapret-sync`, `nfqws-fetch`, `cidr-sync` ходят в GitHub через **sing-box mixed** `127.0.0.1:10808` (домены `github.com` / `githubusercontent.com` в VPN-списке).
+
+```sh
+rvpnctl update-check
+rvpnctl update          # тот же edition из /usr/share/rvpn/EDITION
+```
+
+Если VPN ещё нет — update может упасть и поставить `update.pending`; после `enable-vpn` повтор подтянется сам.
+
+Сборка всех edition + текст для GitHub Release:
+
+```sh
+sh tools/build-release.sh 0.2.0
+# dist/skvoz-0.2.0-{tiny,slim,standard,full}.tar.gz
+# dist/RELEASE-NOTES-0.2.0.md
+gh release create v0.2.0 dist/skvoz-0.2.0-*.tar.gz --notes-file dist/RELEASE-NOTES-0.2.0.md
+```
 
 ## Настройка VPN
 
@@ -137,7 +177,7 @@ rvpnctl ui-secret
 # или: uci get rvpn.main.ui_secret
 ```
 
-В UI: тумблер VPN, ping узла, быстрое добавление домена в VPN.
+В UI: тумблеры слоёв, health, пресеты, подписки, pool probe/optimize, lookup «куда идёт домен», add/del по слоям, adblock update/allow, CIDR sync, live counts, sparkline нагрузки.
 
 ### 5. Свои домены в VPN
 

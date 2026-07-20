@@ -5,6 +5,7 @@
 
 RVPN_SUB_DIR=$RVPN_RUN/sub
 CLASH_AWK=/usr/lib/rvpn/clash-parse.awk
+SUB_FILTER_AWK=/usr/lib/rvpn/sub-filter.awk
 
 sub_list_ids() {
 	uci -q show rvpn | sed -n 's/^rvpn\.\([^=]*\)=subscription$/\1/p'
@@ -267,11 +268,18 @@ sub_filter_tsv() {
 	prefer=$(uci -q get "rvpn.$sid.prefer")
 	skip=$(uci -q get "rvpn.$sid.skip_keywords")
 	[ -n "$skip" ] || skip='expire,剩余,流量,官网,套餐'
+	[ -n "$prefer" ] || prefer='vless-reality,hysteria2,trojan,vless-ws,vless-grpc,vless,ss'
 
+	if [ -f "$SUB_FILTER_AWK" ]; then
+		PREFER=$prefer SKIP=$skip MAX=$max awk -f "$SUB_FILTER_AWK" "$infile" >"$outfile"
+		[ -s "$outfile" ]
+		return $?
+	fi
+
+	# Fallback: shell loop (no awk helper)
 	: >"$outfile.ranked"
 	while IFS="$(printf '\t')" read -r tag type server port uuid password sni pbk sid_r flow fp network path host method; do
 		[ -n "$tag" ] || continue
-		# keyword skip on tag
 		bad=0
 		oldifs=$IFS
 		IFS=,

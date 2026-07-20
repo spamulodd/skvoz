@@ -1,0 +1,51 @@
+[
+  {
+    "id": "youtube",
+    "title_ru": "YouTube",
+    "layer": "vpn",
+    "sources": ["rules/vpn-domains.txt"],
+    "enabled_default": true
+  },
+  {
+    "id": "telegram_meta",
+    "title_ru": "Telegram, Instagram, Facebook",
+    "layer": "vpn",
+    "sources": ["rules/vpn-domains.txt", "rules/vpn-cidr.txt"],
+    "enabled_default": true
+  },
+  {
+    "id": "discord",
+    "title_ru": "Discord",
+    "layer": "vpn",
+    "sources": ["rules/vpn-domains.txt"],
+    "enabled_default": true
+  },
+  {
+    "id": "streaming",
+    "title_ru": "Кино и сериалы",
+    "layer": "dpi",
+    "sources": ["rules/dpi.txt"],
+    "enabled_default": true
+  },
+  {
+    "id": "games",
+    "title_ru": "Игры",
+    "layer": "games",
+    "sources": ["rules/games-domains.txt"],
+    "enabled_default": true
+  },
+  {
+    "id": "dpi_other",
+    "title_ru": "Прочие заблокированные сайты",
+    "layer": "dpi",
+    "sources": ["rules/dpi.txt"],
+    "enabled_default": true
+  },
+  {
+    "id": "adblock",
+    "title_ru": "Блокировка рекламы",
+    "layer": "adblock",
+    "sources": ["rules/adblock-seed.txt"],
+    "enabled_default": true
+  }
+]

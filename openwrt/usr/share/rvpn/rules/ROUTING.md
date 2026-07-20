@@ -7,8 +7,8 @@
 |--------|------|------|
 | Рунет, private | DIRECT | geoip / default |
 | Игры (Steam, Epic…) | DIRECT | `games-domains.txt` |
-| Rockstar Launcher / Social Club | **DIRECT + zapret** | `games-domains.txt` + `dpi.txt` (не FakeIP: мёртвые mux.* вешают лаунчер) |
-| YouTube (сайт, API, видео, превью) | **VPN** | `vpn-domains.txt` |
+| Rockstar Launcher / Social Club | **DIRECT + zapret** | `games-domains.txt` + `dpi.txt` (не FakeIP: мёртвые mux.* вешают лаунчер; FB SDK/Graph тоже DIRECT) |
+| YouTube + Google (Gemini, gstatic, APIs…) | **VPN** | `vpn-domains.txt` (`google.com` / `googleapis.com` / `youtube.com`…); `mtalk*` → games DIRECT |
 | Telegram текст + media/стикеры | **VPN** | `vpn-domains.txt` + `vpn-cidr.txt` |
 | SlashLIB / HentaiLIB / MangaLib / atsu.moe | **VPN** | `vpn-domains.txt` |
 | Свои домены (быстрый add) | **VPN** | `vpn-user.txt` (`rvpnctl add-domain`) |
@@ -16,9 +16,9 @@
 | Spotify / Twitch / SoundCloud / Reddit | **VPN** | `vpn-domains.txt` |
 | Patreon / LinkedIn / Notion / Figma / Canva | **VPN** | `vpn-domains.txt` |
 | Apple Music artwork + APNs (`push.apple.com`) | **VPN** | `vpn-domains.txt` |
-| Google FCM narrow (`mtalk` / `fcm.*`) — не весь Google | **VPN** | `vpn-domains.txt` |
+| Google FCM HTTPS | **VPN** | под `googleapis.com`; **mtalk:5228 DIRECT** (`games-domains.txt`) — иначе Rockstar |
 | Microsoft WNS (`notify.windows.com` / `wns.windows.com`) | **VPN** | `vpn-domains.txt` |
-| Gemini / ChatGPT / news | **VPN** | `vpn-domains.txt` (Gemini companions) |
+| Gemini / ChatGPT / news | **VPN** | `vpn-domains.txt` (Gemini + clients6/gstatic/apis companions — иначе RU DIRECT → geo-block) |
 | VPN nodes from subscription (Clash/URI) | **VPN outbounds** | UCI `subscription` + [SUBSCRIPTIONS.md](SUBSCRIPTIONS.md) |
 | hdrezka, rutracker, AO3 | **zapret** | `dpi.txt` (nfqws ALT11-like) |
 | реклама / трекеры | **Adblock (DNS)** | dnsmasq `address=/…/0.0.0.0` (OISD small + seed/user/allow) |
@@ -43,6 +43,8 @@ CIDR (IP→VPN) обновляются раз в неделю (cron `skvoz-cidr`
 5. nft zapret: early TCP 80/443 → nfqws **кроме** FakeIP / `vpn_cidr` / mark
 6. остальное → WAN напрямую
 
+Пользовательские списки (UI / quick-add): `vpn-user.txt`, `dpi-user.txt`, `games-user.txt` (+ allow в `adblock-allow.txt`).
+
 ## Telegram media
 
 Клиент ходит на media DC **по IP**. Неполный `vpn-cidr.txt` = текст есть, фото/видео/стикеры только в части чатов.
@@ -54,3 +56,12 @@ CIDR (IP→VPN) обновляются раз в неделю (cron `skvoz-cidr`
 
 `filter_aaaa`, блок DoH/DoT (`doh-cidr.txt`), QUIC reject **кроме** FakeIP и `vpn_cidr`.  
 Adblock не режет контент внутри YouTube/Telegram — только DNS-домены рекламных сетей.
+
+## FakeIP и NXDOMAIN
+
+sing-box FakeIP отвечает синтетическим `198.18.x` на **любой** запрос, попавший под `domain_suffix` из `vpn-domains.txt`, даже если имя в реальности NXDOMAIN. Клиенты (лаунчеры) могут бесконечно висеть на SynSent.
+
+Правила:
+1. Широкие apex в VPN — только для живых сервисов; мёртвые/служебные subdomain’ы платформ → `games-domains.txt` (DNS `local` + route DIRECT).
+2. DNS: `games_dom` → `local` **до** правила FakeIP; route: games DIRECT до VPN.
+3. Не класть в VPN суффиксы вроде целого `google.com` / `googleapis.com` — только узкие companions.

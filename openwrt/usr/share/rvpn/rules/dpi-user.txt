@@ -1,0 +1,1 @@
+# User DPI hostlist (quick-add from UI). Merged with dpi.txt at zapret start.

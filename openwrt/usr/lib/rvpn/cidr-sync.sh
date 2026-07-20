@@ -13,7 +13,7 @@ cidr_fetch() {
 	url=$1
 	dest=$2
 	if command -v curl >/dev/null 2>&1; then
-		curl -fsSL --connect-timeout 20 --max-time 120 "$url" -o "$dest"
+		rvpn_curl -fsSL --connect-timeout 20 --max-time 120 "$url" -o "$dest"
 	elif command -v wget >/dev/null 2>&1; then
 		wget -qT 120 -O "$dest" "$url"
 	else
@@ -124,13 +124,12 @@ cidr_sync_build() {
 }
 
 cidr_sync_apply() {
-	# Reload nft sets that embed vpn_cidr + sing-box route CIDR
+	# sb_reload_domains re-applies nft vpn — avoid double nft_apply_vpn
 	vpn=$(uci_get vpn_enabled)
 	zap=$(uci_get zapret_enabled)
 	if [ "$vpn" = "1" ]; then
-		nft_apply_vpn || log "WARN: nft vpn after cidr-sync"
-		nft_apply_quic || true
 		sb_reload_domains || log "WARN: sing-box reload after cidr-sync"
+		nft_apply_quic || true
 	fi
 	if [ "$zap" = "1" ]; then
 		nft_apply_zapret || log "WARN: nft zapret after cidr-sync"

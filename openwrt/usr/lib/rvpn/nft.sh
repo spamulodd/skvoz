@@ -121,6 +121,14 @@ nft_build_cidr_elements() {
 	' "$f"
 }
 
+# Fingerprint of CIDR set (+ port/fake) to skip full table recreate.
+nft_vpn_fp() {
+	port=$1
+	fake=$2
+	elems=$3
+	printf '%s|%s|%s' "$port" "$fake" "$elems" | md5sum 2>/dev/null | awk '{print $1}'
+}
+
 nft_apply_quic() {
 	# Reject QUIC on WAN path only. NEVER reject FakeIP / vpn_cidr — that
 	# runs before tproxy and broke YouTube API + Telegram media UDP.
@@ -170,7 +178,7 @@ EOF
 
 nft_apply_vpn() {
 	vpn=$(uci_get vpn_enabled)
-	[ "$vpn" = "1" ] || { nft_flush_vpn; return 0; }
+	[ "$vpn" = "1" ] || { nft_flush_vpn; rm -f "$RVPN_RUN/nft_vpn.fp"; return 0; }
 
 	port=$(uci_get tproxy_port)
 	[ -n "$port" ] || port=12345
@@ -178,6 +186,32 @@ nft_apply_vpn() {
 	[ -n "$fake" ] || fake=198.18.0.0/15
 
 	elems=$(nft_build_cidr_elements)
+	fp=$(nft_vpn_fp "$port" "$fake" "$elems")
+	# Fast path: table exists and fingerprint unchanged — try set replace only
+	if [ -n "$fp" ] && [ -f "$RVPN_RUN/nft_vpn.fp" ] && \
+		[ "$(cat "$RVPN_RUN/nft_vpn.fp" 2>/dev/null)" = "$fp" ] && \
+		nft list table inet rvpn_vpn >/dev/null 2>&1; then
+		if [ -n "$elems" ] && nft list set inet rvpn_vpn vpn_cidr >/dev/null 2>&1; then
+			# Already in sync
+			return 0
+		fi
+		if [ -z "$elems" ]; then
+			return 0
+		fi
+	fi
+
+	# Hot update: flush/add elements without deleting table (less traffic blip)
+	if [ -n "$fp" ] && [ -n "$elems" ] && nft list table inet rvpn_vpn >/dev/null 2>&1 && \
+		nft list set inet rvpn_vpn vpn_cidr >/dev/null 2>&1; then
+		if nft flush set inet rvpn_vpn vpn_cidr 2>/dev/null && \
+			nft add element inet rvpn_vpn vpn_cidr "{ $elems }" 2>/dev/null; then
+			echo "$fp" >"$RVPN_RUN/nft_vpn.fp"
+			log "nft vpn_cidr set updated (hot)"
+			return 0
+		fi
+		log "WARN: nft vpn hot update failed — full recreate"
+	fi
+
 	set_block=""
 	cidr_pre=""
 	cidr_out=""
@@ -192,7 +226,6 @@ nft_apply_vpn() {
 		cidr_pre="
 		iifname \"br-lan\" ip daddr @vpn_cidr meta l4proto tcp tproxy ip to :$port meta mark set 0x1 counter
 		iifname \"br-lan\" ip daddr @vpn_cidr meta l4proto udp tproxy ip to :$port meta mark set 0x1 counter"
-		# output: mark only (tproxy in output unsupported on many mt7621 builds)
 		cidr_out="
 		ip daddr @vpn_cidr meta l4proto tcp meta mark set 0x1 counter
 		ip daddr @vpn_cidr meta l4proto udp meta mark set 0x1 counter"
@@ -222,9 +255,11 @@ $cidr_out
 }
 EOF
 	then
+		[ -n "$fp" ] && echo "$fp" >"$RVPN_RUN/nft_vpn.fp"
 		log "nft vpn tproxy :$port fake=$fake cidr=$([ -n "$elems" ] && echo yes || echo no)"
 	else
 		log "ERROR: nft vpn apply failed"
+		rm -f "$RVPN_RUN/nft_vpn.fp"
 		nft_flush_vpn
 		return 1
 	fi

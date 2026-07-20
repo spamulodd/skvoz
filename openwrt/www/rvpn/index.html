@@ -1,694 +1,743 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Skvoz</title>
-<link rel="preconnect" href="https://fonts.bunny.net">
-<link href="https://fonts.bunny.net/css?family=unbounded:500,700|ibm-plex-sans:400,500,600&display=swap" rel="stylesheet">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Skvoz - Настройка</title>
 <style>
-  :root {
-    --bg-deep: #070b10;
-    --bg-mid: #0e1520;
-    --ink: #e4eaf0;
-    --muted: #7d8fa6;
-    --line: rgba(148, 176, 204, 0.14);
-    --teal: #1ec4a8;
-    --teal-dim: rgba(30, 196, 168, 0.18);
-    --sky: #5eb4ff;
-    --ok: #42d392;
-    --warn: #d4a843;
-    --bad: #e06b6b;
-    --surface: rgba(14, 21, 32, 0.72);
-  }
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Syne:wght@400;600;800&display=swap');
+:root {
+  --ink: #0f1a14;
+  --accent: #1f6b4a;
+  --accent-hover: #175438;
+  --bg: #f4f6f5;
+  --surface: #ffffff;
+  --text: #2c3631;
+  --text-muted: #6b7a73;
+  --border: #e0e6e3;
+  --error: #d93838;
+  --success: #28a745;
+  --font-ui: 'DM Sans', sans-serif;
+  --font-display: 'Syne', sans-serif;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  font-family: var(--font-ui); color: var(--text); background: var(--bg);
+  overflow: hidden; /* No page scroll */
+}
+h1, h2, h3, h4 { font-family: var(--font-display); margin: 0 0 1rem 0; color: var(--ink); }
+a { color: var(--accent); text-decoration: none; }
+button {
+  background: var(--accent); color: white; border: none; padding: 0.75rem 1.25rem;
+  border-radius: 0.5rem; font-family: var(--font-ui); font-weight: 500; cursor: pointer;
+  transition: background 0.2s; font-size: 1rem;
+}
+button:hover { background: var(--accent-hover); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.outline { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+button.outline:hover { background: rgba(31, 107, 74, 0.1); }
+input[type="text"], input[type="password"], select {
+  width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 0.5rem;
+  font-family: var(--font-ui); font-size: 1rem; margin-bottom: 1rem;
+  background: var(--surface); color: var(--text); outline: none;
+}
+input:focus, select:focus { border-color: var(--accent); }
 
-  *, *::before, *::after { box-sizing: border-box; }
+#app, #gate { height: 100%; display: none; flex-direction: column; overflow: hidden; }
+#gate { justify-content: center; align-items: center; background: var(--ink); color: white; }
+#gate h1 { color: white; text-align: center; }
+.gate-box { background: var(--surface); color: var(--text); padding: 2rem; border-radius: 1rem; width: 100%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
 
-  html { scroll-behavior: smooth; }
+/* Layout Shell */
+.app-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.header { padding: 1rem 2rem; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.header h1 { margin: 0; font-size: 1.5rem; }
 
-  body {
-    margin: 0;
-    min-height: 100vh;
-    color: var(--ink);
-    font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-    font-size: 15px;
-    line-height: 1.45;
-    background-color: var(--bg-deep);
-    background-image:
-      radial-gradient(1200px 600px at 85% -15%, rgba(30, 80, 110, 0.35) 0%, transparent 55%),
-      radial-gradient(900px 500px at -5% 20%, rgba(20, 120, 100, 0.22) 0%, transparent 50%),
-      linear-gradient(165deg, #0a1018 0%, var(--bg-deep) 40%, #0b1219 100%);
-  }
+/* Tabs */
+.tabs { display: flex; overflow-x: auto; background: var(--ink); color: white; padding: 0 1rem; scrollbar-width: none; flex-shrink: 0; }
+.tabs::-webkit-scrollbar { display: none; }
+.tab { padding: 1rem; cursor: pointer; font-weight: 500; white-space: nowrap; opacity: 0.7; border-bottom: 2px solid transparent; transition: opacity 0.2s; }
+.tab:hover { opacity: 1; }
+.tab.active { opacity: 1; border-bottom-color: var(--accent); }
 
-  body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    opacity: 0.045;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-    background-size: 180px 180px;
-    z-index: 0;
-  }
+/* Viewport content */
+.content-area { flex: 1; overflow-y: auto; padding: 2rem; background: var(--bg); }
+.panel { background: var(--surface); border-radius: 1rem; padding: 1.5rem; margin-bottom: 1.5rem; border: 1px solid var(--border); box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
 
-  .wrap {
-    position: relative;
-    z-index: 1;
-    max-width: 640px;
-    margin: 0 auto;
-    padding: clamp(1.5rem, 5vw, 2.75rem) 1.25rem 3rem;
-  }
+/* Wizard Steps */
+.wizard-stepper { display: flex; padding: 1rem 2rem; background: var(--surface); border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; flex-shrink: 0; }
+.w-step { display: flex; align-items: center; opacity: 0.5; font-weight: 500; margin-right: 1.5rem; white-space: nowrap; transition: opacity 0.2s, color 0.2s; }
+.w-step.active { opacity: 1; color: var(--accent); }
+.w-step::after { content: "›"; margin-left: 1.5rem; color: var(--text-muted); opacity: 0.5; font-size: 1.2rem; }
+.w-step:last-child::after { display: none; }
+.wizard-content { max-width: 600px; margin: 0 auto; }
+.wizard-nav { display: flex; justify-content: space-between; margin-top: 2rem; padding-bottom: 2rem; }
 
-  /* —— hero viewport —— */
-  .hero {
-    min-height: min(88vh, 720px);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 1.35rem;
-    animation: hero-in 0.55s ease-out both;
-  }
+/* Utils */
+.hidden { display: none !important; }
+.flex { display: flex; gap: 1rem; }
+.flex-col { display: flex; flex-direction: column; gap: 1rem; }
+.badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 1rem; font-size: 0.75rem; font-weight: bold; }
+.log-box { font-family: monospace; font-size: 0.85rem; background: var(--ink); color: #00ff00; padding: 1rem; border-radius: 0.5rem; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; }
 
-  @keyframes hero-in {
-    from { opacity: 0; transform: translateY(10px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
+/* Chips */
+.chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.chip { background: var(--border); padding: 0.35rem 0.75rem; border-radius: 1rem; font-size: 0.85rem; font-weight: 500; }
 
-  .brand {
-    font-family: "Unbounded", "Segoe UI Variable", "Trebuchet MS", sans-serif;
-    font-size: clamp(2.4rem, 9vw, 3.6rem);
-    font-weight: 700;
-    letter-spacing: -0.04em;
-    line-height: 1;
-    margin: 0;
-    background: linear-gradient(120deg, var(--ink) 20%, var(--teal) 90%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-
-  .tagline {
-    margin: 0;
-    color: var(--muted);
-    font-size: 0.92rem;
-    max-width: 34ch;
-  }
-
-  .status-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-    min-height: 1.6rem;
-    transition: opacity 0.35s ease;
-  }
-
-  .status-row.loading { opacity: 0.45; }
-
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.22rem 0.55rem;
-    font-size: 0.72rem;
-    font-weight: 500;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-    border: 1px solid var(--line);
-    background: var(--surface);
-    border-radius: 3px;
-    transition: border-color 0.25s ease, color 0.25s ease;
-  }
-
-  .badge::before {
-    content: "";
-    width: 5px;
-    height: 5px;
-    border-radius: 1px;
-    background: var(--muted);
-  }
-
-  .badge.ok { color: var(--ok); border-color: rgba(66, 211, 146, 0.35); }
-  .badge.ok::before { background: var(--ok); }
-  .badge.bad { color: var(--bad); border-color: rgba(224, 107, 107, 0.35); }
-  .badge.bad::before { background: var(--bad); }
-  .badge.neutral { color: var(--muted); }
-  .badge.neutral::before { background: var(--sky); opacity: 0.6; }
-
-  .toggles {
-    display: grid;
-    gap: 0.65rem;
-    margin-top: 0.25rem;
-  }
-
-  .toggle-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    padding: 0.85rem 1rem;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: linear-gradient(135deg, rgba(255,255,255,0.025) 0%, transparent 60%), var(--surface);
-  }
-
-  .toggle-row h2 {
-    margin: 0;
-    font-size: 0.98rem;
-    font-weight: 600;
-  }
-
-  .toggle-row p {
-    margin: 0.15rem 0 0;
-    font-size: 0.78rem;
-    color: var(--muted);
-  }
-
-  .switch {
-    position: relative;
-    flex: 0 0 auto;
-    width: 48px;
-    height: 26px;
-    padding: 0;
-    border: 1px solid var(--line);
-    border-radius: 5px;
-    background: #1a2430;
-    cursor: pointer;
-    transition: background 0.22s ease, border-color 0.22s ease;
-  }
-
-  .switch:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
-
-  .switch.on {
-    background: var(--teal-dim);
-    border-color: rgba(30, 196, 168, 0.45);
-  }
-
-  .switch i {
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 18px;
-    height: 18px;
-    border-radius: 3px;
-    background: #c8d4de;
-    transition: transform 0.22s ease, background 0.22s ease;
-  }
-
-  .switch.on i {
-    transform: translateX(20px);
-    background: var(--teal);
-  }
-
-  .switch.busy { opacity: 0.55; pointer-events: none; }
-
-  /* —— below fold —— */
-  .panel {
-    margin-top: 2rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid var(--line);
-  }
-
-  .node-line {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0.5rem 1rem;
-    margin-bottom: 1rem;
-    font-size: 0.85rem;
-  }
-
-  .node-line .label { color: var(--muted); }
-  .node-line .name { font-weight: 600; color: var(--sky); font-family: "IBM Plex Sans", monospace; }
-  .node-line .latency { color: var(--teal); }
-  .node-line .latency.pending { color: var(--muted); }
-
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-  }
-
-  button.btn {
-    appearance: none;
-    font: inherit;
-    font-size: 0.8rem;
-    font-weight: 500;
-    padding: 0.5rem 0.85rem;
-    color: var(--ink);
-    background: transparent;
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    cursor: pointer;
-    transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
-  }
-
-  button.btn:hover {
-    border-color: rgba(94, 180, 255, 0.45);
-    color: var(--sky);
-    background: rgba(94, 180, 255, 0.06);
-  }
-
-  button.btn:active { transform: translateY(1px); }
-  button.btn.danger:hover { border-color: rgba(224, 107, 107, 0.5); color: var(--bad); background: rgba(224, 107, 107, 0.06); }
-
-  .matrix {
-    margin-top: 1.25rem;
-    font-size: 0.78rem;
-  }
-
-  .matrix h3 {
-    margin: 0 0 0.5rem;
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--muted);
-  }
-
-  .matrix table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-
-  .matrix th,
-  .matrix td {
-    text-align: left;
-    padding: 0.38rem 0.4rem;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .matrix th { color: var(--muted); font-weight: 500; }
-
-  .layer {
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-
-  .layer.direct { color: var(--muted); }
-  .layer.zapret { color: var(--warn); }
-  .layer.vpn { color: var(--sky); }
-  .layer.adblock { color: var(--ok); }
-
-  .log-box {
-    margin-top: 1rem;
-    display: none;
-  }
-
-  .log-box.open { display: block; animation: fade-in 0.3s ease; }
-
-  @keyframes fade-in {
-    from { opacity: 0; }
-    to   { opacity: 1; }
-  }
-
-  pre#log-out {
-    margin: 0;
-    padding: 0.85rem;
-    max-height: 260px;
-    overflow: auto;
-    font-size: 0.72rem;
-    line-height: 1.45;
-    color: var(--muted);
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    background: rgba(0, 0, 0, 0.35);
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  .foot {
-    margin-top: 2rem;
-    font-size: 0.68rem;
-    color: rgba(125, 143, 166, 0.55);
-  }
-
-  .gate {
-    display: none;
-    max-width: 420px;
-    margin: 4rem auto;
-    padding: 0 1.25rem;
-  }
-  .gate.show { display: block; }
-  .gate h1 { font-family: Unbounded, sans-serif; font-size: 1.8rem; margin: 0 0 0.5rem; }
-  .gate p { color: var(--muted); margin: 0 0 1rem; font-size: 0.9rem; }
-  .gate input {
-    width: 100%; padding: 0.7rem 0.85rem; margin-bottom: 0.75rem;
-    border: 1px solid var(--line); background: var(--surface); color: var(--ink);
-    font: inherit; border-radius: 4px;
-  }
-  .gate .hint { font-size: 0.75rem; color: var(--muted); margin-top: 0.75rem; word-break: break-all; }
-  .app.hidden { display: none; }
+.toast { position: fixed; bottom: 2rem; right: 2rem; background: var(--ink); color: white; padding: 1rem 1.5rem; border-radius: 0.5rem; transition: opacity 0.3s, transform 0.3s; opacity: 0; transform: translateY(20px); pointer-events: none; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+.toast.show { opacity: 1; transform: translateY(0); }
 </style>
 </head>
 <body>
-<div class="gate" id="gate">
-  <h1>Skvoz</h1>
-  <p>Введите UI-токен (один раз сохранится в браузере).</p>
-  <input id="token-input" type="password" autocomplete="current-password" placeholder="ui_secret">
-  <button class="btn" id="btn-unlock" type="button">Войти</button>
-  <p class="hint">Токен: <code>rvpnctl ui-secret</code> или <code>uci get rvpn.main.ui_secret</code><br>Скопируйте целиком, без пробелов.</p>
+
+<!-- GATE -->
+<div id="gate">
+  <div class="gate-box">
+    <h1>Skvoz</h1>
+    <p style="text-align: center; color: var(--text-muted); margin-bottom: 2rem;">Введите пароль для доступа к роутеру</p>
+    <form id="login-form">
+      <input type="password" id="gate-pwd" placeholder="Пароль" required>
+      <button type="submit" style="width: 100%">Войти</button>
+    </form>
+  </div>
 </div>
-<div class="wrap app hidden" id="app">
 
-  <section class="hero">
-    <h1 class="brand">Skvoz</h1>
-    <p class="tagline">Сквозь DPI · Рунет и игры напрямую · hard-block через VPN</p>
-
-    <div class="status-row" id="status-row" aria-live="polite"></div>
-
-    <div class="toggles">
-      <div class="toggle-row">
-        <div>
-          <h2>Zapret (DPI)</h2>
-          <p>Rockstar, hdrezka, rutracker, AO3 (DPI)</p>
+<div id="app">
+  <!-- WIZARD -->
+  <div id="wizard" class="app-view hidden">
+    <div class="header">
+      <h1>Skvoz Setup</h1>
+    </div>
+    <div class="wizard-stepper" id="w-stepper">
+      <div class="w-step" data-step="0">Приветствие</div>
+      <div class="w-step" data-step="1">VPN</div>
+      <div class="w-step" data-step="2">Списки</div>
+      <div class="w-step" data-step="3">Zapret</div>
+      <div class="w-step" data-step="4">Пул</div>
+      <div class="w-step" data-step="5">Тест</div>
+      <div class="w-step" data-step="6">Wi-Fi</div>
+      <div class="w-step" data-step="7">Готово</div>
+    </div>
+    <div class="content-area">
+      <div class="wizard-content">
+        <!-- Step 0 -->
+        <div id="w-step-0" class="panel hidden">
+          <h2>Добро пожаловать в Skvoz</h2>
+          <p>Давайте выполним базовую настройку вашей системы для обхода блокировок и безопасного доступа.</p>
+          <div id="w-pending-sync" class="hidden" style="color: var(--error); background: #ffebeb; padding: 1rem; border-radius: 0.5rem; margin-top: 1rem; border: 1px solid #ffcdcd;">
+            <strong>Внимание:</strong> Обнаружены ожидающие изменения. Рекомендуется полностью пройти процесс синхронизации.
+          </div>
         </div>
-        <button class="switch" id="sw-zapret" type="button" role="switch" aria-checked="false" aria-label="Zapret"><i></i></button>
-      </div>
-      <div class="toggle-row">
-        <div>
-          <h2>VPN (hard-block)</h2>
-          <p>YouTube, Telegram media, Instagram, Discord, TikTok, Gemini</p>
+        <!-- Step 1 -->
+        <div id="w-step-1" class="panel hidden">
+          <h2>Настройка VPN</h2>
+          <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; background: var(--bg); padding: 0.5rem; border-radius: 0.5rem;">
+            <label style="cursor:pointer; flex:1; text-align:center;"><input type="radio" name="vpn_type" value="sub" checked onchange="toggleVpnType()"> Подписка</label>
+            <label style="cursor:pointer; flex:1; text-align:center;"><input type="radio" name="vpn_type" value="vps" onchange="toggleVpnType()"> VPS</label>
+          </div>
+          <div id="vpn-sub-pane">
+            <input type="text" id="sub_id" placeholder="Название / ID подписки (опционально)">
+            <input type="text" id="sub_url" placeholder="URL подписки (VLESS/Shadowsocks/др.)">
+            <div class="flex">
+              <button onclick="saveSub()">Сохранить</button>
+              <button onclick="refreshSub()" class="outline">Обновить данные</button>
+            </div>
+          </div>
+          <div id="vpn-vps-pane" class="hidden">
+            <input type="text" id="vps_server" placeholder="Сервер (IP или домен)">
+            <input type="text" id="vps_port" placeholder="Порт">
+            <input type="password" id="vps_password" placeholder="Пароль / UUID">
+            <input type="text" id="vps_sni" placeholder="SNI (опционально)">
+            <button onclick="saveVps()">Сохранить параметры VPS</button>
+          </div>
         </div>
-        <button class="switch" id="sw-vpn" type="button" role="switch" aria-checked="false" aria-label="VPN"><i></i></button>
-      </div>
-      <div class="toggle-row">
-        <div>
-          <h2>Adblock (DNS)</h2>
-          <p>Реклама и трекеры → 0.0.0.0 (до FakeIP)</p>
+        <!-- Step 2 -->
+        <div id="w-step-2" class="panel hidden">
+          <h2>Списки маршрутизации</h2>
+          <p>Синхронизация списков доменов для направления трафика в VPN или Zapret.</p>
+          <button onclick="syncLists()">Синхронизировать списки</button>
+          <div id="w-categories" class="chips" style="margin-top: 1.5rem;"></div>
         </div>
-        <button class="switch" id="sw-adblock" type="button" role="switch" aria-checked="false" aria-label="Adblock"><i></i></button>
+        <!-- Step 3 -->
+        <div id="w-step-3" class="panel hidden">
+          <h2>Настройка Zapret (DPI)</h2>
+          <p>Выберите стратегию обхода блокировок для вашего провайдера.</p>
+          <select id="w-zapret-strat"></select>
+          <div class="flex" style="flex-wrap: wrap;">
+            <button onclick="applyZapretStrat()">Применить</button>
+            <button onclick="autotuneZapret()" class="outline">Автоподбор</button>
+            <button onclick="syncZapret()" class="outline">Синхронизировать</button>
+          </div>
+        </div>
+        <!-- Step 4 -->
+        <div id="w-step-4" class="panel hidden">
+          <h2>Пул узлов</h2>
+          <p>Проверьте доступность узлов и выберите оптимальный.</p>
+          <div class="flex">
+            <button onclick="probePool()">Проверить пул</button>
+            <button onclick="optimizePool()" class="outline">Оптимизировать</button>
+          </div>
+          <pre id="w-pool-res" class="log-box" style="height: 150px; margin-top:1.5rem; display:none;"></pre>
+        </div>
+        <!-- Step 5 -->
+        <div id="w-step-5" class="panel hidden">
+          <h2>Диагностика</h2>
+          <p>Выполните самотестирование системы для проверки всех компонентов.</p>
+          <button onclick="runSelftest('w-selftest-res')">Запустить селфтест</button>
+          <pre id="w-selftest-res" class="log-box" style="height: 200px; margin-top:1.5rem; display:none;"></pre>
+        </div>
+        <!-- Step 6 -->
+        <div id="w-step-6" class="panel hidden">
+          <h2>Wi-Fi Сеть</h2>
+          <p>Данные для подключения к вашей сети Skvoz.</p>
+          <div id="w-wifi-info" style="margin-bottom: 1.5rem; background: var(--bg); padding: 1rem; border-radius: 0.5rem;"></div>
+          <div id="w-wifi-qr" style="text-align: center;"></div>
+        </div>
+        <!-- Step 7 -->
+        <div id="w-step-7" class="panel hidden">
+          <h2>Всё готово!</h2>
+          <p>Базовая настройка завершена. Теперь вы можете перейти к использованию и тонкой настройке в панели управления.</p>
+          <button onclick="finishSetup()" style="margin-top: 1rem;">Завершить настройку</button>
+        </div>
+
+        <div class="wizard-nav">
+          <button id="w-prev" onclick="wNav(-1)" class="outline" style="visibility: hidden;">Назад</button>
+          <button id="w-next" onclick="wNav(1)">Далее</button>
+        </div>
       </div>
     </div>
-  </section>
+  </div>
 
-  <section class="panel">
-    <div class="node-line">
-      <span class="label">Узел</span>
-      <span class="name" id="node-name">—</span>
-      <span class="latency pending" id="node-latency">— ms</span>
+  <!-- DASHBOARD -->
+  <div id="dashboard" class="app-view hidden">
+    <div class="header">
+      <h1>Skvoz</h1>
+      <button onclick="logout()" class="outline" style="padding: 0.5rem 1rem; font-size: 0.85rem;">Выход</button>
     </div>
-
-    <div class="actions">
-      <button class="btn" id="btn-refresh" type="button">Обновить</button>
-      <button class="btn" id="btn-restart" type="button">Перезапуск</button>
-      <button class="btn danger" id="btn-stop" type="button">Стоп (fail-open)</button>
-      <button class="btn" id="btn-log" type="button">Лог</button>
-      <button class="btn" id="btn-load" type="button">Нагрузка</button>
-      <button class="btn" id="btn-ping" type="button">Ping узла</button>
+    <div class="tabs" id="d-tabs">
+      <div class="tab active" onclick="switchTab('status')">Статус</div>
+      <div class="tab" onclick="switchTab('vpn')">VPN</div>
+      <div class="tab" onclick="switchTab('lists')">Списки</div>
+      <div class="tab" onclick="switchTab('zapret')">Zapret</div>
+      <div class="tab" onclick="switchTab('tests')">Тесты</div>
+      <div class="tab" onclick="switchTab('wifi')">Wi-Fi</div>
+      <div class="tab" onclick="switchTab('sys')">Система</div>
     </div>
-
-    <div class="matrix">
-      <h3>Маршрутизация</h3>
-      <table>
-        <thead>
-          <tr><th>Ресурс</th><th>Слой</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>ya.ru, vk, банки, Рунет</td><td><span class="layer direct">DIRECT</span></td></tr>
-          <tr><td>Steam, игровые серверы</td><td><span class="layer direct">DIRECT</span></td></tr>
-          <tr><td>Rockstar Launcher / Social Club</td><td><span class="layer zapret">DIRECT+zapret</span></td></tr>
-          <tr><td>YouTube (сайт, API, видео, превью)</td><td><span class="layer vpn">VPN</span></td></tr>
-          <tr><td>hdrezka, rutracker, AO3</td><td><span class="layer zapret">zapret</span></td></tr>
-          <tr><td>реклама / трекеры</td><td><span class="layer adblock">Adblock (DNS)</span></td></tr>
-          <tr><td>Telegram (+ media CIDR)</td><td><span class="layer vpn">VPN</span></td></tr>
-          <tr><td>Instagram, Facebook, WhatsApp</td><td><span class="layer vpn">VPN</span></td></tr>
-          <tr><td>Discord, TikTok, X</td><td><span class="layer vpn">VPN</span></td></tr>
-          <tr><td>Spotify (сайт + обложки CDN)</td><td><span class="layer vpn">VPN</span></td></tr>
-          <tr><td>Twitch, SoundCloud, Reddit</td><td><span class="layer vpn">VPN</span></td></tr>
-          <tr><td>Patreon, Apple Music artwork</td><td><span class="layer vpn">VPN</span></td></tr>
-          <tr><td>Gemini, ChatGPT</td><td><span class="layer vpn">VPN</span></td></tr>
-          <tr><td>meduza, bbc, dw</td><td><span class="layer vpn">VPN</span></td></tr>
-          <tr><td>SlashLIB, HentaiLIB, MangaLib, atsu.moe</td><td><span class="layer vpn">VPN</span></td></tr>
-          <tr><td>остальное</td><td><span class="layer direct">DIRECT</span></td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="matrix" id="domain-box">
-      <h3>Быстрый VPN-домен</h3>
-      <p style="color:var(--muted);font-size:0.85rem;margin:0 0 0.75rem">Гео-блок / hard-block → FakeIP+VPN. Пример: <code>atsu.moe</code></p>
-      <div class="actions" style="margin-bottom:0.75rem">
-        <input id="domain-input" type="text" placeholder="example.com" autocomplete="off"
-          style="flex:1;min-width:10rem;padding:0.55rem 0.75rem;border-radius:10px;border:1px solid var(--line);background:rgba(0,0,0,0.25);color:var(--ink);font:inherit">
-        <button class="btn" id="btn-add-domain" type="button">Добавить</button>
+    <div class="content-area">
+      <!-- Status Tab -->
+      <div id="tab-status" class="panel">
+        <h2>Текущий статус</h2>
+        <div class="flex-col" id="dash-status" style="margin-bottom: 2rem;">Загрузка...</div>
+        <h3>Управление слоями</h3>
+        <div class="flex" style="flex-wrap: wrap;">
+          <button id="btn-layer-vpn" onclick="toggleLayer('vpn', this)">VPN: Загрузка</button>
+          <button id="btn-layer-zapret" onclick="toggleLayer('zapret', this)">Zapret: Загрузка</button>
+          <button id="btn-layer-adblock" onclick="toggleLayer('adblock', this)">Adblock: Загрузка</button>
+        </div>
       </div>
-      <p id="domain-msg" style="color:var(--muted);font-size:0.8rem;min-height:1.2em"></p>
-      <p style="color:var(--muted);font-size:0.75rem;margin:0">CLI: <code>rvpnctl add-domain example.com</code></p>
+      <!-- VPN Tab -->
+      <div id="tab-vpn" class="panel hidden">
+        <h2>Управление VPN</h2>
+        <div class="flex" style="margin-bottom: 1.5rem; flex-wrap: wrap;">
+          <button onclick="apiText('ping').then(r=>showToast(r)).catch(()=>showToast('Ошибка'))">Пинг маршрутов</button>
+          <button onclick="fetchPool('dash-pool-res')" class="outline">Показать пул</button>
+          <button onclick="fetchSubs()" class="outline">Список подписок</button>
+        </div>
+        <pre id="dash-pool-res" class="log-box" style="height: 250px; display:none; margin-bottom: 1.5rem;"></pre>
+        <div id="dash-subs-res" style="background: var(--bg); border-radius: 0.5rem;"></div>
+      </div>
+      <!-- Lists Tab -->
+      <div id="tab-lists" class="panel hidden">
+        <h2>Списки и категории</h2>
+        <p>Категории доменов и маршрутизации, доступные в системе.</p>
+        <button onclick="syncLists()" style="margin-bottom: 1.5rem;">Синхронизировать списки</button>
+        <div id="dash-categories" class="chips" style="margin-bottom: 2.5rem;"></div>
+        
+        <h3 style="border-top: 1px solid var(--border); padding-top: 1.5rem;">Добавить домен в список</h3>
+        <div class="flex" style="align-items: flex-start; flex-wrap: wrap;">
+          <input type="text" id="add_domain_name" placeholder="example.com" style="flex:1; min-width: 200px;">
+          <select id="add_domain_list" style="width:auto; min-width: 150px;">
+            <option value="vpn">VPN</option>
+            <option value="zapret">Zapret (DPI)</option>
+            <option value="games">Игры</option>
+            <option value="allow">Adblock allow</option>
+          </select>
+          <button onclick="addDomain()">Добавить</button>
+        </div>
+      </div>
+      <!-- Zapret Tab -->
+      <div id="tab-zapret" class="panel hidden">
+        <h2>Zapret Стратегии</h2>
+        <p>Настройка обхода DPI (Deep Packet Inspection).</p>
+        <div class="flex" style="align-items: flex-start; flex-wrap: wrap; margin-bottom: 1.5rem;">
+          <select id="dash-zapret-strat" style="width: auto; min-width: 250px;"></select>
+          <button onclick="applyZapretStrat('dash-zapret-strat')">Применить</button>
+          <button onclick="autotuneZapret()" class="outline">Запустить автоподбор</button>
+        </div>
+      </div>
+      <!-- Tests Tab -->
+      <div id="tab-tests" class="panel hidden">
+        <h2>Диагностика системы (Селфтест)</h2>
+        <button onclick="runSelftest('dash-selftest-res')" style="margin-bottom: 1.5rem;">Запустить тест</button>
+        <pre id="dash-selftest-res" class="log-box" style="height: 350px; display:none;"></pre>
+      </div>
+      <!-- Wi-Fi Tab -->
+      <div id="tab-wifi" class="panel hidden">
+        <h2>Wi-Fi</h2>
+        <div id="dash-wifi-info" style="margin-bottom: 1.5rem; background: var(--bg); padding: 1rem; border-radius: 0.5rem;"></div>
+        <div id="dash-wifi-qr" style="text-align: center;"></div>
+      </div>
+      <!-- System Tab -->
+      <div id="tab-sys" class="panel hidden">
+        <h2>Управление системой</h2>
+        <div class="flex" style="flex-wrap: wrap; margin-bottom: 1.5rem;">
+          <button onclick="checkUpdate()">Проверить обновления</button>
+          <button onclick="doUpdate()" class="outline">Обновить прошивку</button>
+          <button onclick="getLog()" class="outline">Логи сервиса</button>
+          <button onclick="sysCmd('restart')" class="outline">Перезапуск</button>
+          <button onclick="sysCmd('stop')" class="outline" style="color:var(--error); border-color:var(--error);">Остановить сервис</button>
+        </div>
+        <pre id="sys-log-res" class="log-box" style="height: 350px; display:none;"></pre>
+      </div>
     </div>
-
-    <div class="log-box" id="log-box">
-      <pre id="log-out">…</pre>
-    </div>
-
-    <p class="foot">rvpn · порт 81 · автообновление 15 с</p>
-  </section>
-
+  </div>
 </div>
+
+<div id="toast" class="toast"></div>
 
 <script>
-(function () {
-  const API = '/cgi-bin/rvpn.cgi';
-  const LS = 'skvoz_ui_token';
-  const gate = document.getElementById('gate');
-  const app = document.getElementById('app');
-  const statusRow = document.getElementById('status-row');
-  const swZapret = document.getElementById('sw-zapret');
-  const swVpn = document.getElementById('sw-vpn');
-  const swAdblock = document.getElementById('sw-adblock');
-  const nodeName = document.getElementById('node-name');
-  const nodeLatency = document.getElementById('node-latency');
-  const logBox = document.getElementById('log-box');
-  const logOut = document.getElementById('log-out');
+const API = '/cgi-bin/rvpn.cgi';
+let currentWizardStep = 0;
+const TOTAL_STEPS = 8;
+let wizardData = {};
 
-  function token() { return localStorage.getItem(LS) || ''; }
+function getToken() { return localStorage.getItem('skvoz_token') || ''; }
+function setToken(t) { localStorage.setItem('skvoz_token', t); }
 
-  async function api(query) {
-    const t = token();
-    // uhttpd does not pass X-Skvoz-Token to CGI — token in query is required.
-    const sep = query.indexOf('?') >= 0 ? '&' : (query ? '&' : '');
-    const q = query + (t ? sep + 'token=' + encodeURIComponent(t) : '');
-    const r = await fetch(API + '?' + q, {
-      cache: 'no-store',
-      headers: t ? { 'X-Skvoz-Token': t } : {}
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.innerText = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+async function api(cmd, params={}) {
+  // CGI: first query token is the action (status|setup|set&layer=…), not cmd=
+  let url = API + '?' + cmd;
+  for (let k in params) {
+    if (params[k] !== undefined && params[k] !== null && params[k] !== '') {
+      url += '&' + k + '=' + encodeURIComponent(params[k]);
+    }
+  }
+  const t = getToken();
+  const hdrs = t ? { 'X-Skvoz-Token': t } : {};
+  let res = await fetch(url, { cache: 'no-store', credentials: 'same-origin', headers: hdrs });
+  if (res.status === 401 && t) {
+    const sep = url.indexOf('?') >= 0 ? '&' : '?';
+    res = await fetch(url + sep + 'token=' + encodeURIComponent(t), {
+      cache: 'no-store', credentials: 'same-origin', headers: hdrs
     });
-    const text = await r.text();
-    if (r.status === 401 || text.indexOf('"unauthorized"') >= 0) {
-      localStorage.removeItem(LS);
-      showGate();
-      throw new Error('unauthorized');
+  }
+  if (res.status === 401 || res.status === 403) {
+    setToken('');
+    document.getElementById('gate').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+    throw new Error('Unauthorized');
+  }
+  if (!res.ok) throw new Error('API Error: ' + res.status);
+  return res;
+}
+async function apiJson(cmd, params={}) {
+  const res = await api(cmd, params);
+  try { return await res.json(); } catch(e) { return {}; }
+}
+async function apiText(cmd, params={}) {
+  const res = await api(cmd, params);
+  return res.text();
+}
+
+document.getElementById('login-form').onsubmit = async (e) => {
+  e.preventDefault();
+  setToken(document.getElementById('gate-pwd').value);
+  try {
+    await init();
+  } catch (err) {
+    showToast('Ошибка авторизации');
+  }
+};
+
+function logout() {
+  setToken('');
+  location.reload();
+}
+
+async function init() {
+  if (!getToken()) {
+    document.getElementById('gate').style.display = 'flex';
+    return;
+  }
+  try {
+    const setup = await apiJson('setup');
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    wizardData = setup;
+    
+    if (setup.setup_done != 1) {
+      document.getElementById('wizard').classList.remove('hidden');
+      document.getElementById('dashboard').classList.add('hidden');
+      initWizard();
+    } else {
+      document.getElementById('wizard').classList.add('hidden');
+      document.getElementById('dashboard').classList.remove('hidden');
+      initDashboard();
     }
-    return text;
+  } catch (e) {
+    // Handled by api() 401
   }
+}
 
-  function showGate() {
-    gate.classList.add('show');
-    app.classList.add('hidden');
+// WIZARD
+function initWizard() {
+  if (wizardData.pending_sync) {
+    document.getElementById('w-pending-sync').classList.remove('hidden');
   }
-  function showApp() {
-    gate.classList.remove('show');
-    app.classList.remove('hidden');
-  }
+  updateWizardView();
+}
+async function wNav(dir) {
+  currentWizardStep += dir;
+  if (currentWizardStep < 0) currentWizardStep = 0;
+  if (currentWizardStep >= TOTAL_STEPS) currentWizardStep = TOTAL_STEPS - 1;
+  
+  try {
+    await apiText('setup-step', { step: currentWizardStep });
+  } catch (e) { console.error('setup-step failed', e); }
 
-  function badge(text, kind) {
-    const span = document.createElement('span');
-    span.className = 'badge ' + (kind || 'neutral');
-    span.textContent = text;
-    return span;
-  }
+  updateWizardView();
 
-  function setSwitch(el, on) {
-    el.classList.toggle('on', on);
-    el.setAttribute('aria-checked', on ? 'true' : 'false');
-  }
-
-  function renderStatus(j) {
-    statusRow.replaceChildren();
-    statusRow.appendChild(badge('WAN ' + (j.wan_ok ? 'OK' : 'DOWN'), j.wan_ok ? 'ok' : 'bad'));
-    statusRow.appendChild(badge('zapret ' + (j.zapret_running ? 'run' : 'off'), j.zapret_running ? 'ok' : 'bad'));
-    statusRow.appendChild(badge('VPN ' + (j.vpn_running ? 'run' : 'off'), j.vpn_running ? 'ok' : 'bad'));
-    const adbOn = j.adblock_enabled == 1;
-    const adbDom = j.adblock_domains | 0;
-    statusRow.appendChild(badge(
-      adbOn ? ('adblock ' + (j.adblock_running ? adbDom || 'on' : '…')) : 'adblock off',
-      adbOn && j.adblock_running ? 'ok' : (adbOn ? 'neutral' : 'bad')
-    ));
-    const memMb = Math.round((j.mem_available_kb || 0) / 1024);
-    statusRow.appendChild(badge('RAM ' + memMb + ' MB', memMb > 32 ? 'ok' : 'bad'));
-    const load = (j.loadavg_x100 || 0) / 100;
-    statusRow.appendChild(badge('load ' + load.toFixed(2), load < 1.5 ? 'ok' : 'bad'));
-    const lan = j.lan_clients | 0;
-    statusRow.appendChild(badge('LAN ' + lan, lan > 0 ? 'ok' : 'neutral'));
-
-    setSwitch(swZapret, j.zapret_enabled == 1);
-    setSwitch(swVpn, j.vpn_enabled == 1);
-    setSwitch(swAdblock, adbOn);
-
-    nodeName.textContent = j.node_now || '—';
-    const ms = j.node_delay_ms | 0;
-    nodeLatency.textContent = j.vpn_running && ms > 0 ? ms + ' ms' : (j.vpn_running ? '— ms' : 'VPN off');
-    nodeLatency.classList.toggle('pending', !(j.vpn_running && ms > 0));
-  }
-
-  async function refresh() {
-    statusRow.classList.add('loading');
-    try {
-      const raw = await api('status');
-      const j = JSON.parse(raw.trim().split('\n')[0]);
-      renderStatus(j);
-    } catch (e) {
-      statusRow.replaceChildren(badge('API error', 'bad'));
-    } finally {
-      statusRow.classList.remove('loading');
+  // Lazy load step data
+  if (currentWizardStep === 2) loadCategories('w-categories');
+  if (currentWizardStep === 3) loadZapretStrats('w-zapret-strat');
+  if (currentWizardStep === 6) loadWifi('w-wifi-info', 'w-wifi-qr');
+}
+function updateWizardView() {
+  for (let i = 0; i < TOTAL_STEPS; i++) {
+    const stepPanel = document.getElementById('w-step-' + i);
+    if (stepPanel) {
+      if (i === currentWizardStep) stepPanel.classList.remove('hidden');
+      else stepPanel.classList.add('hidden');
+    }
+    
+    const stepHeader = document.querySelector(`.w-step[data-step="${i}"]`);
+    if (stepHeader) {
+      if (i === currentWizardStep) {
+        stepHeader.classList.add('active');
+        stepHeader.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      } else {
+        stepHeader.classList.remove('active');
+      }
     }
   }
+  
+  const prevBtn = document.getElementById('w-prev');
+  prevBtn.style.visibility = (currentWizardStep === 0) ? 'hidden' : 'visible';
+  
+  const nextBtn = document.getElementById('w-next');
+  nextBtn.classList.toggle('hidden', currentWizardStep === TOTAL_STEPS - 1);
+}
+function toggleVpnType() {
+  const type = document.querySelector('input[name="vpn_type"]:checked').value;
+  document.getElementById('vpn-sub-pane').classList.toggle('hidden', type !== 'sub');
+  document.getElementById('vpn-vps-pane').classList.toggle('hidden', type !== 'vps');
+}
 
-  async function setLayer(layer, on, el) {
-    el.classList.add('busy');
-    try {
-      const raw = await api('set&layer=' + layer + '&on=' + (on ? '1' : '0'));
-      const j = JSON.parse(raw.trim().split('\n')[0]);
-      setSwitch(swZapret, j.zapret_enabled == 1);
-      setSwitch(swVpn, j.vpn_enabled == 1);
-      if (j.adblock_enabled != null) setSwitch(swAdblock, j.adblock_enabled == 1);
-      // Adblock applies without full service restart
-      const wait = layer === 'adblock' ? 1200 : 2500;
-      await new Promise(function (r) { setTimeout(r, wait); });
-      await refresh();
-    } catch (e) {
-      await refresh();
-    } finally {
-      el.classList.remove('busy');
-    }
-  }
+// VPN
+async function saveSub() {
+  const id = document.getElementById('sub_id').value;
+  const url = document.getElementById('sub_url').value;
+  if(!url) return showToast('Введите URL');
+  try {
+    await apiText('sub-set', { id, url });
+    showToast('Подписка сохранена');
+  } catch (e) { showToast('Ошибка сохранения подписки'); }
+}
+async function refreshSub() {
+  try {
+    const res = await apiText('sub-refresh');
+    showToast(res || 'Обновление запущено');
+  } catch (e) { showToast('Ошибка обновления'); }
+}
+async function saveVps() {
+  const params = {
+    server: document.getElementById('vps_server').value,
+    port: document.getElementById('vps_port').value,
+    password: document.getElementById('vps_password').value,
+    sni: document.getElementById('vps_sni').value
+  };
+  if(!params.server || !params.port) return showToast('Заполните сервер и порт');
+  try {
+    await apiText('vps-set', params);
+    showToast('Настройки VPS сохранены');
+  } catch (e) { showToast('Ошибка сохранения VPS'); }
+}
 
-  swZapret.addEventListener('click', function () {
-    setLayer('zapret', !swZapret.classList.contains('on'), swZapret);
-  });
+// Lists
+async function loadCategories(elId) {
+  try {
+    const j = await apiJson('categories');
+    const cats = (j && j.categories) ? j.categories : [];
+    const counts = (j && j.counts) ? j.counts : {};
+    const html = cats.map(function (c) {
+      const n = counts[c.id] != null ? counts[c.id] : '—';
+      return '<div class="chip"><strong>' + (c.title_ru || c.id) + '</strong>: ' + n + ' · ' + (c.layer || '') + '</div>';
+    }).join('');
+    let warn = '';
+    if (j && j.pending_sync == 1) warn = '<p style="color:var(--error)">GitHub sync отложен — включите VPN и нажмите «Списки».</p>';
+    document.getElementById(elId).innerHTML = warn + (html || '<p>Категории пусты</p>');
+  } catch (e) { console.error(e); }
+}
+async function syncLists() {
+  try {
+    showToast('Выполняется синхронизация...');
+    await apiText('lists-sync');
+    showToast('Синхронизация списков завершена');
+    loadCategories('w-categories');
+    loadCategories('dash-categories');
+  } catch (e) { showToast('Ошибка при синхронизации списков'); }
+}
 
-  swVpn.addEventListener('click', function () {
-    setLayer('vpn', !swVpn.classList.contains('on'), swVpn);
-  });
-
-  swAdblock.addEventListener('click', function () {
-    setLayer('adblock', !swAdblock.classList.contains('on'), swAdblock);
-  });
-
-  document.getElementById('btn-refresh').addEventListener('click', refresh);
-
-  async function runSvc(btn, query, waitMs) {
-    btn.disabled = true;
-    try {
-      await api(query);
-    } catch (e) {
-      statusRow.replaceChildren(badge('команда ошибка', 'bad'));
-      btn.disabled = false;
+// Zapret
+async function loadZapretStrats(elId) {
+  try {
+    const j = await apiJson('zapret-strat');
+    const list = (j && j.strategies) ? j.strategies : (Array.isArray(j) ? j : []);
+    const cur = (j && j.current) || 'general_alt11';
+    const el = document.getElementById(elId);
+    if (!list.length) {
+      el.innerHTML = '<option value="general_alt11">general_alt11</option>';
       return;
     }
-    try {
-      await new Promise(function (r) { setTimeout(r, waitMs || 3500); });
-      await refresh();
-    } catch (e) {
-      statusRow.replaceChildren(badge('статус недоступен', 'bad'));
-    } finally {
-      btn.disabled = false;
-    }
+    el.innerHTML = list.map(function (id) {
+      return '<option value="' + id + '"' + (id === cur ? ' selected' : '') + '>' + id + '</option>';
+    }).join('');
+  } catch (e) {
+    document.getElementById(elId).innerHTML = '<option value="general_alt11">general_alt11</option>';
   }
+}
+async function applyZapretStrat(elId = 'w-zapret-strat') {
+  const id = document.getElementById(elId).value;
+  try {
+    await apiText('zapret-strat', { id });
+    showToast('Стратегия применена');
+  } catch (e) { showToast('Ошибка применения стратегии'); }
+}
+async function autotuneZapret() {
+  showToast('Запуск автоподбора (может занять несколько минут)...');
+  try {
+    await apiText('zapret-autotune');
+    showToast('Автоподбор завершен');
+  } catch (e) { showToast('Ошибка автоподбора'); }
+}
+async function syncZapret() {
+  try {
+    await apiText('zapret-sync');
+    showToast('Синхронизировано');
+  } catch (e) { showToast('Ошибка синхронизации Zapret'); }
+}
 
-  document.getElementById('btn-restart').addEventListener('click', function () {
-    runSvc(this, 'restart', 4000);
-  });
+// Pool
+async function probePool() {
+  const el = document.getElementById('w-pool-res');
+  el.style.display = 'block';
+  el.innerText = 'Выполняется проверка пула...';
+  try { el.innerText = await apiText('pool-probe') || 'Проверка завершена без вывода.'; }
+  catch (e) { el.innerText = 'Ошибка при проверке пула.'; }
+}
+async function optimizePool() {
+  showToast('Оптимизация пула...');
+  try { 
+    await apiText('pool-optimize'); 
+    showToast('Пул оптимизирован'); 
+  } catch (e) { showToast('Ошибка оптимизации пула'); }
+}
 
-  document.getElementById('btn-stop').addEventListener('click', function () {
-    runSvc(this, 'stop', 2500);
-  });
+// Selftest
+async function runSelftest(elId) {
+  const el = document.getElementById(elId);
+  el.style.display = 'block';
+  el.innerText = 'Тестирование запущено...';
+  try { el.innerText = await apiText('selftest') || 'Тест завершен без вывода.'; }
+  catch (e) { el.innerText = 'Ошибка запуска селфтеста.'; }
+}
 
-  document.getElementById('btn-log').addEventListener('click', async function () {
-    logBox.classList.add('open');
-    logOut.textContent = 'Загрузка…';
-    try {
-      logOut.textContent = await api('log') || '(пусто)';
-    } catch (e) {
-      logOut.textContent = 'Ошибка: ' + e;
+// Wi-Fi
+async function loadWifi(infoId, qrId) {
+  try {
+    const res = await apiJson('wifi-qr');
+    document.getElementById(infoId).innerHTML = `
+      <div><strong>SSID Сети:</strong> ${res.ssid || 'Неизвестно'}</div>
+      <div style="margin-top: 0.5rem;"><strong>Пароль:</strong> ${res.key || 'Неизвестно'}</div>
+    `;
+    const qrEl = document.getElementById(qrId);
+    qrEl.innerHTML = '';
+    
+    if (res.svg) {
+      qrEl.innerHTML = '<div style="display:inline-block;background:#fff;padding:12px;border-radius:8px">' + res.svg + '</div>';
+    } else if (res.payload) {
+      qrEl.innerHTML = `<div style="padding:1.5rem; background:white; color:var(--ink); display:inline-block; font-family:monospace; text-align:center; border-radius: 0.5rem; border: 1px solid var(--border);">
+        <div style="margin-bottom:0.5rem;font-size:0.85rem;color:var(--text-muted)">WIFI QR (текст — установите qrencode для картинки)</div>
+        <b style="font-size: 0.95rem; word-break: break-all;">${res.payload}</b>
+      </div>`;
     }
-  });
-
-  document.getElementById('btn-load').addEventListener('click', async function () {
-    logBox.classList.add('open');
-    logOut.textContent = 'Загрузка выборки…';
-    try {
-      logOut.textContent = await api('load') || '(пусто)';
-    } catch (e) {
-      logOut.textContent = 'Ошибка: ' + e;
-    }
-  });
-
-  document.getElementById('btn-ping').addEventListener('click', async function () {
-    nodeLatency.textContent = '…';
-    nodeLatency.classList.add('pending');
-    try {
-      const raw = await api('ping');
-      const j = JSON.parse(raw.trim());
-      const ms = j.delay | 0;
-      nodeLatency.textContent = ms > 0 ? ms + ' ms' : 'timeout';
-      nodeLatency.classList.toggle('pending', ms <= 0);
-    } catch (e) {
-      nodeLatency.textContent = 'ошибка';
-    }
-  });
-
-  document.getElementById('btn-unlock').addEventListener('click', async function () {
-    const v = document.getElementById('token-input').value.trim().replace(/\s+/g, '');
-    if (!v) return;
-    localStorage.setItem(LS, v);
-    try {
-      await api('status');
-      showApp();
-      refresh();
-      setInterval(refresh, 15000);
-    } catch (e) {
-      localStorage.removeItem(LS);
-      alert('Неверный токен. На роутере: rvpnctl ui-secret');
-    }
-  });
-
-  document.getElementById('btn-add-domain').addEventListener('click', async function () {
-    const input = document.getElementById('domain-input');
-    const msg = document.getElementById('domain-msg');
-    const d = (input.value || '').trim();
-    if (!d) return;
-    this.disabled = true;
-    msg.textContent = 'добавляю…';
-    try {
-      const raw = await api('add-domain&domain=' + encodeURIComponent(d));
-      const j = JSON.parse(raw.trim().split('\n')[0]);
-      msg.textContent = 'OK: ' + (j.domain || d) + ' → VPN';
-      input.value = '';
-    } catch (e) {
-      msg.textContent = 'ошибка добавления';
-    } finally {
-      this.disabled = false;
-    }
-  });
-  document.getElementById('domain-input').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') document.getElementById('btn-add-domain').click();
-  });
-
-  async function boot() {
-    if (!token()) { showGate(); return; }
-    try {
-      await api('status');
-      showApp();
-      refresh();
-      setInterval(refresh, 15000);
-    } catch (e) {
-      showGate();
-    }
+  } catch (e) {
+    document.getElementById(infoId).innerText = 'Не удалось загрузить данные Wi-Fi';
   }
-  boot();
-})();
+}
+
+// Finish Wizard
+async function finishSetup() {
+  try {
+    await apiText('setup-done');
+    location.reload();
+  } catch (e) { showToast('Ошибка завершения настройки'); }
+}
+
+// DASHBOARD
+let currentTab = 'status';
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(e => e.classList.remove('active'));
+  document.querySelector(`.tab[onclick="switchTab('${tab}')"]`).classList.add('active');
+  
+  document.querySelectorAll('#dashboard .panel').forEach(e => e.classList.add('hidden'));
+  document.getElementById('tab-' + tab).classList.remove('hidden');
+  currentTab = tab;
+
+  if (tab === 'status') refreshDashStatus();
+  if (tab === 'lists') loadCategories('dash-categories');
+  if (tab === 'zapret') loadZapretStrats('dash-zapret-strat');
+  if (tab === 'wifi') loadWifi('dash-wifi-info', 'dash-wifi-qr');
+}
+
+function initDashboard() {
+  refreshDashStatus();
+}
+
+async function refreshDashStatus() {
+  try {
+    const [snap, stat] = await Promise.all([
+      apiJson('snapshot').catch(()=>({})),
+      apiJson('status').catch(()=>({}))
+    ]);
+    
+    let html = '';
+    html += `<div style="padding: 0.5rem 0; border-bottom: 1px solid var(--border);"><strong>Версия Skvoz:</strong> ${snap.version || '-'}</div>`;
+    html += `<div style="padding: 0.5rem 0; border-bottom: 1px solid var(--border);"><strong>Аптайм роутера:</strong> ${snap.uptime || '-'}</div>`;
+    html += `<div style="padding: 0.5rem 0;"><strong>Активный узел VPN:</strong> ${stat.vpn_node || '-'}</div>`;
+    
+    document.getElementById('dash-status').innerHTML = html;
+
+    updateToggleBtn(document.getElementById('btn-layer-vpn'), 'VPN', stat.layer_vpn);
+    updateToggleBtn(document.getElementById('btn-layer-zapret'), 'Zapret', stat.layer_zapret);
+    updateToggleBtn(document.getElementById('btn-layer-adblock'), 'Adblock', stat.layer_adblock);
+  } catch (e) {
+    document.getElementById('dash-status').innerHTML = 'Ошибка загрузки статуса';
+  }
+}
+
+function updateToggleBtn(btn, name, state) {
+  if(!btn) return;
+  const isOn = (state == '1' || state === true);
+  btn.innerText = `${name}: ${isOn ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}`;
+  btn.dataset.state = isOn ? '1' : '0';
+  if (isOn) {
+    btn.classList.remove('outline');
+    btn.style.backgroundColor = 'var(--success)';
+  } else {
+    btn.classList.add('outline');
+    btn.style.backgroundColor = 'transparent';
+    btn.style.color = 'var(--text-muted)';
+    btn.style.borderColor = 'var(--border)';
+  }
+}
+
+async function toggleLayer(layer, btn) {
+  const currentState = btn.dataset.state === '1';
+  const on = currentState ? '0' : '1';
+  try {
+    await apiText('set', { layer, on });
+    updateToggleBtn(btn, layer === 'vpn' ? 'VPN' : (layer === 'zapret' ? 'Zapret' : 'Adblock'), on);
+    showToast(`Слой ${layer.toUpperCase()} переключен`);
+  } catch (e) { showToast('Ошибка переключения слоя'); }
+}
+
+async function fetchPool(elId) {
+  const el = document.getElementById(elId);
+  el.style.display = 'block';
+  el.innerText = 'Загрузка пула...';
+  try { el.innerText = await apiText('pool') || 'Пул пуст'; }
+  catch (e) { el.innerText = 'Ошибка получения пула'; }
+}
+
+async function fetchSubs() {
+  const el = document.getElementById('dash-subs-res');
+  try {
+    const res = await apiJson('subs');
+    const list = (res && res.subs) ? res.subs : (Array.isArray(res) ? res : []);
+    if (list.length > 0) {
+      el.innerHTML = list.map(s => `<div style="padding: 0.75rem; border-bottom: 1px solid var(--border);"><strong>${s.id || 'N/A'}:</strong> <span style="word-break: break-all; color: var(--text-muted); font-size: 0.9rem;">${s.url_show || s.url || ''}</span> · nodes ${s.last_count|0}</div>`).join('');
+    } else {
+      el.innerHTML = '<div style="padding: 1rem;">Нет настроенных подписок</div>';
+    }
+  } catch (e) {
+    el.innerHTML = '<div style="padding: 1rem; color: var(--error);">Ошибка загрузки подписок</div>';
+  }
+}
+
+async function addDomain() {
+  const domain = document.getElementById('add_domain_name').value;
+  const layer = document.getElementById('add_domain_list').value;
+  if (!domain) return showToast('Введите домен');
+  try {
+    await apiText('add-domain', { domain, layer });
+    showToast('Домен ' + domain + ' добавлен');
+    document.getElementById('add_domain_name').value = '';
+  } catch (e) { showToast('Ошибка добавления домена'); }
+}
+
+async function checkUpdate() {
+  try { showToast(await apiText('update-check') || 'Проверка выполнена'); } 
+  catch (e) { showToast('Ошибка проверки обновлений'); }
+}
+async function doUpdate() {
+  showToast('Запуск обновления. Не отключайте питание...');
+  try { 
+    await apiText('update'); 
+    showToast('Обновление отправлено на выполнение'); 
+  } 
+  catch (e) { showToast('Ошибка при обновлении'); }
+}
+async function getLog() {
+  const el = document.getElementById('sys-log-res');
+  el.style.display = 'block';
+  el.innerText = 'Чтение логов...';
+  try { el.innerText = await apiText('log') || 'Логи пусты'; } 
+  catch (e) { el.innerText = 'Ошибка чтения логов'; }
+}
+async function sysCmd(cmd) {
+  try { 
+    await apiText(cmd); 
+    showToast(`Команда ${cmd} выполнена`); 
+  } catch (e) { showToast(`Ошибка выполнения команды ${cmd}`); }
+}
+
+// Check auth on load
+document.addEventListener('DOMContentLoaded', () => {
+  if (getToken()) {
+    init();
+  } else {
+    document.getElementById('gate').style.display = 'flex';
+  }
+});
 </script>
 </body>
 </html>

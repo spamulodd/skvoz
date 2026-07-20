@@ -4,11 +4,18 @@
 . /usr/lib/rvpn/nft.sh
 . /usr/lib/rvpn/singbox.sh
 . /usr/lib/rvpn/zapret.sh
+. /usr/lib/rvpn/zapret-strat.sh
+. /usr/lib/rvpn/zapret-sync.sh
+. /usr/lib/rvpn/zapret-test.sh
 . /usr/lib/rvpn/health.sh
 . /usr/lib/rvpn/cidr-sync.sh
 . /usr/lib/rvpn/sub.sh
 . /usr/lib/rvpn/node-pool.sh
 . /usr/lib/rvpn/adblock.sh
+. /usr/lib/rvpn/nfqws-fetch.sh
+. /usr/lib/rvpn/update.sh
+. /usr/lib/rvpn/selftest.sh
+. /usr/lib/rvpn/ui-api.sh
 
 cmd=${1:-status}
 
@@ -58,6 +65,11 @@ enable-vpn)
 	uci set rvpn.main.vpn_enabled='1'
 	uci commit rvpn
 	svc restart
+	# After VPN: Flowseal lists + nfqws + optional autotune
+	(
+		sleep 3
+		zapret_after_vpn_ready
+	) >/dev/null 2>&1 &
 	;;
 disable-vpn)
 	uci set rvpn.main.vpn_enabled='0'
@@ -142,8 +154,52 @@ pool-optimize)
 	pool_run || { echo FAIL; exit 1; }
 	echo "HINT: rvpnctl restart  # apply enabled set"
 	;;
+zapret-strategies)
+	zapret_strat_list
+	echo "current=$(zapret_strat_id)"
+	;;
+zapret-strategy)
+	# rvpnctl zapret-strategy [id]
+	if [ -n "$2" ]; then
+		zapret_strat_set "$2" || { echo FAIL; exit 1; }
+		if [ "$(uci_get zapret_enabled)" = "1" ]; then
+			zapret_start && nft_apply_zapret || { echo FAIL; exit 1; }
+		fi
+		echo "OK strategy=$2"
+	else
+		zapret_strat_json
+	fi
+	;;
+zapret-sync)
+	zapret_sync_run && echo OK || { echo FAIL; cat "$RVPN_RUN/zapret_sync.warn" 2>/dev/null; exit 1; }
+	;;
+zapret-test)
+	# Test one strategy (default: current)
+	zapret_test_one "${2:-}" || { echo FAIL; exit 1; }
+	;;
+zapret-autotune)
+	zapret_test_autotune || { echo FAIL; exit 1; }
+	;;
+nfqws-fetch)
+	nfqws_fetch_run && echo OK || { echo FAIL; exit 1; }
+	;;
+update-check)
+	update_check_json
+	;;
+update)
+	update_run || { echo FAIL; exit 1; }
+	;;
+selftest)
+	selftest_run
+	;;
+setup-done)
+	ui_setup_done_set
+	;;
+wifi-qr)
+	ui_wifi_qr_json
+	;;
 *)
-	echo "Usage: rvpnctl status|start|stop|restart|enable-zapret|disable-zapret|enable-vpn|disable-vpn|enable-adblock|disable-adblock|adblock-update|adblock-status|gen-config|add-domain|del-domain|list-domains|ui-secret|log|load|sync-cidr|sub-refresh|sub-import|nodes-probe|pool-optimize"
+	echo "Usage: rvpnctl status|start|stop|restart|enable-*|disable-*|…|zapret-*|nfqws-fetch|update-check|update|selftest|setup-done|wifi-qr|pool-optimize|sub-*"
 	exit 1
 	;;
 esac

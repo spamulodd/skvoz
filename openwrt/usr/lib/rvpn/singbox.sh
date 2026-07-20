@@ -100,7 +100,8 @@ sb_generate() {
 
 	merged=$(vpn_domains_merged_file)
 	vpn_dom=$(sb_build_json_array "$merged")
-	games_dom=$(sb_build_json_array "$RVPN_RULES/games-domains.txt")
+	games_merged=$(games_domains_merged_file)
+	games_dom=$(sb_build_json_array "$games_merged")
 	vpn_cidr='[]'
 	[ -f "$RVPN_RULES/vpn-cidr.txt" ] && vpn_cidr=$(sb_build_cidr_json_array "$RVPN_RULES/vpn-cidr.txt")
 
@@ -109,14 +110,24 @@ sb_generate() {
 	: >"$outbounds_tmp"
 	: >"$tags_tmp"
 
-	for id in $(uci -q show rvpn | sed -n 's/^rvpn\.\([^=]*\)=node$/\1/p'); do
-		en=$(uci -q get "rvpn.$id.enabled")
+	# One uci show — avoid hundreds of uci get per node field
+	uci_show=$RVPN_RUN/uci-rvpn.show
+	uci -q show rvpn >"$uci_show" 2>/dev/null || : >"$uci_show"
+	sb_uci_get() {
+		# $1=id $2=option → value (OpenWrt: rvpn.id.opt='val')
+		v=$(sed -n "s/^rvpn\\.$1\\.$2='\\(.*\\)'$/\\1/p" "$uci_show" | head -1)
+		[ -n "$v" ] && { printf '%s' "$v"; return 0; }
+		sed -n "s/^rvpn\\.$1\\.$2=\\(.*\\)$/\\1/p" "$uci_show" | head -1
+	}
+
+	for id in $(sed -n 's/^rvpn\.\([^=]*\)=node$/\1/p' "$uci_show"); do
+		en=$(sb_uci_get "$id" enabled)
 		[ "$en" = "1" ] || continue
-		type=$(uci -q get "rvpn.$id.type")
-		tag=$(uci -q get "rvpn.$id.tag")
+		type=$(sb_uci_get "$id" type)
+		tag=$(sb_uci_get "$id" tag)
 		[ -n "$tag" ] || tag="$id"
-		server=$(uci -q get "rvpn.$id.server")
-		port=$(uci -q get "rvpn.$id.port")
+		server=$(sb_uci_get "$id" server)
+		port=$(sb_uci_get "$id" port)
 		valid_port "$port" || {
 			log "ERROR: bad port for node $id"
 			continue
@@ -125,10 +136,10 @@ sb_generate() {
 		server_j=$(json_escape "$server")
 		case "$type" in
 		hysteria2|hy2)
-			pw=$(uci -q get "rvpn.$id.password")
-			sni=$(uci -q get "rvpn.$id.sni")
+			pw=$(sb_uci_get "$id" password)
+			sni=$(sb_uci_get "$id" sni)
 			[ -n "$sni" ] || sni="$server"
-			ins=$(uci -q get "rvpn.$id.insecure")
+			ins=$(sb_uci_get "$id" insecure)
 			[ "$ins" = "1" ] && insecure=true || insecure=false
 			pw_j=$(json_escape "$pw")
 			sni_j=$(json_escape "$sni")
@@ -137,18 +148,18 @@ sb_generate() {
 			echo "$tag" >>"$tags_tmp"
 			;;
 		vless)
-			uuid=$(uci -q get "rvpn.$id.uuid")
-			sni=$(uci -q get "rvpn.$id.sni")
+			uuid=$(sb_uci_get "$id" uuid)
+			sni=$(sb_uci_get "$id" sni)
 			[ -n "$sni" ] || sni="$server"
-			pbk=$(uci -q get "rvpn.$id.reality_public_key")
-			sid=$(uci -q get "rvpn.$id.reality_short_id")
-			flow=$(uci -q get "rvpn.$id.flow")
-			fp=$(uci -q get "rvpn.$id.fingerprint")
+			pbk=$(sb_uci_get "$id" reality_public_key)
+			sid=$(sb_uci_get "$id" reality_short_id)
+			flow=$(sb_uci_get "$id" flow)
+			fp=$(sb_uci_get "$id" fingerprint)
 			[ -n "$fp" ] || fp=chrome
-			network=$(uci -q get "rvpn.$id.network")
+			network=$(sb_uci_get "$id" network)
 			[ -n "$network" ] || network=tcp
-			path=$(uci -q get "rvpn.$id.path")
-			host=$(uci -q get "rvpn.$id.host")
+			path=$(sb_uci_get "$id" path)
+			host=$(sb_uci_get "$id" host)
 			uuid_j=$(json_escape "$uuid")
 			sni_j=$(json_escape "$sni")
 			fp_j=$(json_escape "$fp")
@@ -182,15 +193,15 @@ sb_generate() {
 			echo "$tag" >>"$tags_tmp"
 			;;
 		trojan)
-			pw=$(uci -q get "rvpn.$id.password")
-			sni=$(uci -q get "rvpn.$id.sni")
+			pw=$(sb_uci_get "$id" password)
+			sni=$(sb_uci_get "$id" sni)
 			[ -n "$sni" ] || sni="$server"
-			fp=$(uci -q get "rvpn.$id.fingerprint")
+			fp=$(sb_uci_get "$id" fingerprint)
 			[ -n "$fp" ] || fp=chrome
-			network=$(uci -q get "rvpn.$id.network")
+			network=$(sb_uci_get "$id" network)
 			[ -n "$network" ] || network=tcp
-			path=$(uci -q get "rvpn.$id.path")
-			host=$(uci -q get "rvpn.$id.host")
+			path=$(sb_uci_get "$id" path)
+			host=$(sb_uci_get "$id" host)
 			pw_j=$(json_escape "$pw")
 			sni_j=$(json_escape "$sni")
 			fp_j=$(json_escape "$fp")
@@ -215,8 +226,8 @@ sb_generate() {
 			echo "$tag" >>"$tags_tmp"
 			;;
 		ss|shadowsocks)
-			pw=$(uci -q get "rvpn.$id.password")
-			method=$(uci -q get "rvpn.$id.method")
+			pw=$(sb_uci_get "$id" password)
+			method=$(sb_uci_get "$id" method)
 			[ -n "$method" ] || method=aes-128-gcm
 			pw_j=$(json_escape "$pw")
 			method_j=$(json_escape "$method")
@@ -289,6 +300,7 @@ sb_generate() {
     ],
     "rules": [
       {"query_type": ["HTTPS", "SVCB"], "action": "reject"},
+      {"domain_suffix": $games_dom, "server": "local"},
       {"domain_suffix": $vpn_dom, "server": "fakeip", "rewrite_ttl": 60}
     ],
     "final": "local",
@@ -352,7 +364,7 @@ sb_start() {
 	echo $! >"$RVPN_RUN/sing-box.pid"
 	chmod 600 "$RVPN_RUN/sing-box.pid" 2>/dev/null || true
 	sleep 2
-	if [ -z "$(sb_pids)" ]; then
+	if ! sb_alive; then
 		log "ERROR: sing-box failed to start"
 		tail -40 /tmp/rvpn/sing-box.log >>"$RVPN_LOG"
 		return 1
@@ -367,8 +379,8 @@ sb_stop() {
 	log "sing-box stopped"
 }
 
-# Reload FakeIP domain lists. Hold reload lock so watchdog does not fail-open
-# during the brief stop/start window, then re-assert FakeIP DNS + TPROXY.
+# Reload FakeIP domain lists. Exclusive flock + timestamp lock for watchdog.
+# Timestamp lock: watchdog clears if older than 120s (crash leftover).
 sb_reload_domains() {
 	vpn=$(uci_get vpn_enabled)
 	[ "$vpn" = "1" ] || {
@@ -381,28 +393,48 @@ sb_reload_domains() {
 	. /usr/lib/rvpn/nft.sh
 
 	mkdir -p "$RVPN_RUN"
-	: >"$RVPN_SB_RELOAD_LOCK"
-	sb_generate || {
-		rm -f "$RVPN_SB_RELOAD_LOCK"
-		return 1
-	}
+	if command -v flock >/dev/null 2>&1; then
+		(
+			i=0
+			while ! flock -n 8; do
+				i=$((i + 1))
+				[ "$i" -gt 60 ] && {
+					log "sb_reload_domains: flock timeout"
+					exit 1
+				}
+				sleep 1
+			done
+			date +%s >"$RVPN_SB_RELOAD_LOCK" 2>/dev/null || echo 1 >"$RVPN_SB_RELOAD_LOCK"
+			sb_reload_domains_inner
+			rc=$?
+			rm -f "$RVPN_SB_RELOAD_LOCK"
+			exit "$rc"
+		) 8>"$RVPN_SB_RELOAD_FLOCK"
+		return $?
+	fi
+	date +%s >"$RVPN_SB_RELOAD_LOCK" 2>/dev/null || echo 1 >"$RVPN_SB_RELOAD_LOCK"
+	sb_reload_domains_inner
+	rc=$?
+	rm -f "$RVPN_SB_RELOAD_LOCK"
+	return "$rc"
+}
+
+sb_reload_domains_inner() {
+	sb_generate || return 1
 	sb_kill_ours
-	# Keep cache.db (store_fakeip). Only flush dnsmasq so LAN gets fresh answers.
-	killall -HUP dnsmasq 2>/dev/null || true
-	sleep 1
+	# Keep cache.db. One HUP for cache flush (dns_apply is idempotent — no second reload if FakeIP ok).
+	dns_flush_cache
 	"$SB_BIN" run -c "$RVPN_SB_JSON" >/tmp/rvpn/sing-box.log 2>&1 &
 	echo $! >"$RVPN_RUN/sing-box.pid"
 	chmod 600 "$RVPN_RUN/sing-box.pid" "$RVPN_SB_JSON" 2>/dev/null || true
 	sleep 2
-	if [ -z "$(sb_pids)" ]; then
+	if ! sb_alive; then
 		log "ERROR: sing-box reload failed"
-		rm -f "$RVPN_SB_RELOAD_LOCK"
 		return 1
 	fi
-	# If a previous reload raced the watchdog, FakeIP/nft may be gone — restore.
+	# Reconcile only when fail-open left DNS/nft wrong
 	dns_apply
 	nft_apply_vpn || log "WARN: nft vpn re-apply failed after domain reload"
-	rm -f "$RVPN_SB_RELOAD_LOCK"
 	log "sing-box reloaded (domains)"
 	return 0
 }

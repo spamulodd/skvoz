@@ -1,6 +1,7 @@
 #!/bin/sh
 # DNS: FakeIP upstream when VPN on AND sing-box alive; filter-aaaa for zapret/VPN.
 # Fail-open: never point dnsmasq at FakeIP while sing-box is dead.
+# Idempotent: skip uci commit/reload when desired mode already applied.
 
 . /usr/lib/rvpn/common.sh
 
@@ -35,7 +36,6 @@ dns_restore_servers_from_backup() {
 	if [ -s "$DNS_BACKUP" ]; then
 		while IFS= read -r s || [ -n "$s" ]; do
 			[ -n "$s" ] || continue
-			# split accidental space-joined backups
 			for one in $s; do
 				uci add_list dhcp.@dnsmasq[0].server="$one"
 			done
@@ -56,18 +56,42 @@ dns_backup_once() {
 	fi
 }
 
-# True when FakeIP hijack is safe (VPN wanted and sing-box answering).
 dns_vpn_ready() {
 	vpn=$(uci_get vpn_enabled)
 	[ "$vpn" = "1" ] || return 1
-	[ -n "$(sb_pids)" ] || return 1
+	sb_alive || return 1
 	return 0
 }
 
+# Desired mark: off | aaaa | fakeip
+dns_desired_mark() {
+	zap=$(uci_get zapret_enabled)
+	vpn=$(uci_get vpn_enabled)
+	if [ "$zap" != "1" ] && [ "$vpn" != "1" ]; then
+		echo off
+		return 0
+	fi
+	if [ "$vpn" = "1" ] && dns_vpn_ready; then
+		echo fakeip
+		return 0
+	fi
+	echo aaaa
+}
+
 dns_apply_aaaa_only() {
+	cur=$(cat "$DNS_MARK_FILE" 2>/dev/null || echo "")
+	if [ "$cur" = "aaaa" ]; then
+		# Still ensure FakeIP upstream is not lingering
+		srv=$(uci -q get dhcp.@dnsmasq[0].server 2>/dev/null || true)
+		listen=$(uci_get dns_listen)
+		[ -n "$listen" ] || listen=127.0.0.42
+		case "$srv" in
+		*"$listen"*) ;;
+		*) return 0 ;;
+		esac
+	fi
 	dns_backup_once
 	uci set dhcp.@dnsmasq[0].filter_aaaa='1'
-	# Drop FakeIP upstream if it was active
 	if [ -f "$DNS_MARK_FILE" ] && grep -q fakeip "$DNS_MARK_FILE" 2>/dev/null; then
 		dns_restore_servers_from_backup
 		uci -q delete dhcp.@dnsmasq[0].noresolv
@@ -89,39 +113,47 @@ dns_apply_aaaa_only() {
 }
 
 dns_apply() {
-	zap=$(uci_get zapret_enabled)
-	vpn=$(uci_get vpn_enabled)
+	want=$(dns_desired_mark)
+	cur=$(cat "$DNS_MARK_FILE" 2>/dev/null || echo "")
 
-	if [ "$zap" != "1" ] && [ "$vpn" != "1" ]; then
+	if [ "$want" = "off" ]; then
 		dns_restore
 		return 0
 	fi
 
-	# VPN enabled but sing-box down → never hijack DNS (real fail-open)
-	if [ "$vpn" = "1" ] && ! dns_vpn_ready; then
-		log "dns: vpn_enabled but sing-box down — aaaa-only fail-open"
+	if [ "$want" = "aaaa" ]; then
 		dns_apply_aaaa_only
 		return 0
 	fi
 
+	# want=fakeip
 	listen=$(uci_get dns_listen)
 	[ -n "$listen" ] || listen=127.0.0.42
+	if [ "$cur" = "fakeip" ]; then
+		srv=$(uci -q get dhcp.@dnsmasq[0].server 2>/dev/null || true)
+		case "$srv" in
+		*"$listen"*)
+			# Already FakeIP — no commit/reload
+			return 0
+			;;
+		esac
+	fi
 
 	dns_backup_once
 	uci set dhcp.@dnsmasq[0].filter_aaaa='1'
+	uci -q delete dhcp.@dnsmasq[0].server
+	uci add_list dhcp.@dnsmasq[0].server="$listen"
+	uci set dhcp.@dnsmasq[0].noresolv='1'
+	uci set dhcp.@dnsmasq[0].localuse='1'
+	uci commit dhcp
+	dns_reload
+	echo fakeip >"$DNS_MARK_FILE"
+	log "dns applied → FakeIP $listen + filter_aaaa"
+}
 
-	if dns_vpn_ready; then
-		uci -q delete dhcp.@dnsmasq[0].server
-		uci add_list dhcp.@dnsmasq[0].server="$listen"
-		uci set dhcp.@dnsmasq[0].noresolv='1'
-		uci set dhcp.@dnsmasq[0].localuse='1'
-		uci commit dhcp
-		dns_reload
-		echo fakeip >"$DNS_MARK_FILE"
-		log "dns applied → FakeIP $listen + filter_aaaa"
-	else
-		dns_apply_aaaa_only
-	fi
+# Flush dnsmasq cache only (no UCI) — for domain list reloads.
+dns_flush_cache() {
+	killall -HUP dnsmasq 2>/dev/null || true
 }
 
 dns_restore() {

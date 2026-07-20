@@ -80,16 +80,21 @@ pool_probe_all() {
 	out=$POOL_DIR/delays.tsv
 	: >"$out"
 	vpn=$(uci_get vpn_enabled)
-	if [ "$vpn" != "1" ] || [ -z "$(sb_pids)" ]; then
+	if [ "$vpn" != "1" ] || ! sb_alive; then
 		log "pool: sing-box not running — skip probe"
 		return 1
 	fi
+	# Bound concurrency (BusyBox: batch wait) — default 3 workers
+	workers=$(uci_get pool_probe_workers)
+	case "$workers" in ''|*[!0-9]*) workers=3 ;; esac
+	[ "$workers" -ge 1 ] || workers=1
+	[ "$workers" -le 6 ] || workers=6
 	n=0
-	ok=0
+	batch=0
+	rm -f "$POOL_DIR"/probe.*.tsv 2>/dev/null || true
 	for id in $(pool_list_node_ids); do
 		en=$(uci -q get "rvpn.$id.enabled")
 		src=$(uci -q get "rvpn.$id.source")
-		# Probe enabled always; also disabled sub: nodes for recovery
 		case "$en" in
 		1) ;;
 		*)
@@ -101,12 +106,28 @@ pool_probe_all() {
 		esac
 		tag=$(uci -q get "rvpn.$id.tag")
 		[ -n "$tag" ] || tag="$id"
-		delay=$(pool_probe_tag "$tag")
-		printf '%s\t%s\t%s\n' "${delay:-0}" "$tag" "$id" >>"$out"
+		(
+			delay=$(pool_probe_tag "$tag")
+			printf '%s\t%s\t%s\n' "${delay:-0}" "$tag" "$id" >"$POOL_DIR/probe.$id.tsv"
+		) &
 		n=$((n + 1))
-		[ "${delay:-0}" -gt 0 ] 2>/dev/null && ok=$((ok + 1))
+		batch=$((batch + 1))
+		if [ "$batch" -ge "$workers" ]; then
+			wait
+			batch=0
+		fi
 	done
-	log "pool: probed $n nodes, alive=$ok"
+	wait
+	ok=0
+	: >"$out"
+	for f in "$POOL_DIR"/probe.*.tsv; do
+		[ -f "$f" ] || continue
+		cat "$f" >>"$out"
+		d=$(awk -F'	' '{print $1; exit}' "$f")
+		[ "${d:-0}" -gt 0 ] 2>/dev/null && ok=$((ok + 1))
+		rm -f "$f"
+	done
+	log "pool: probed $n nodes, alive=$ok (workers=$workers)"
 	[ -s "$out" ]
 }
 
@@ -184,4 +205,29 @@ pool_optimize() {
 pool_run() {
 	pool_probe_all || return 1
 	pool_optimize
+}
+
+# Cron: if VPN enabled and active node looks dead — re-probe and optimize.
+pool_degraded_tick() {
+	vpn=$(uci_get vpn_enabled)
+	[ "$vpn" = "1" ] || return 0
+	sb_alive || return 0
+	# shellcheck source=/dev/null
+	. /usr/lib/rvpn/health.sh 2>/dev/null || true
+	delay=0
+	if command -v curl >/dev/null 2>&1; then
+		body=$(clash_proxy_json 2>/dev/null || true)
+		delay=$(clash_node_delay_ms "$body" 2>/dev/null || echo 0)
+	fi
+	case "$delay" in ''|*[!0-9]*) delay=0 ;; esac
+	degraded=0
+	[ -f "$RVPN_RUN/wd_degraded" ] && degraded=1
+	if [ "$delay" -eq 0 ] || [ "$degraded" = "1" ]; then
+		log "pool: degraded tick (delay=${delay}) — probe+optimize"
+		if pool_run; then
+			# shellcheck source=/dev/null
+			. /usr/lib/rvpn/singbox.sh
+			sb_reload_domains >/dev/null 2>&1 || true
+		fi
+	fi
 }

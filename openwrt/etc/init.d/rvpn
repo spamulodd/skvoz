@@ -68,6 +68,16 @@ start_service() {
 	echo running >"$RVPN_STATE"
 	if [ "$vpn_ok" = "1" ]; then
 		watchdog_start
+		if [ -f /usr/lib/rvpn/zapret-sync.sh ]; then
+			if [ -f "$RVPN_RUN/zapret_sync.pending" ] || [ -f "$RVPN_RUN/nfqws_fetch.pending" ]; then
+				# shellcheck source=/dev/null
+				. /usr/lib/rvpn/zapret-sync.sh
+				(
+					sleep 5
+					zapret_after_vpn_ready >>"$RVPN_LOG" 2>&1 || true
+				) &
+			fi
+		fi
 	else
 		watchdog_stop
 	fi

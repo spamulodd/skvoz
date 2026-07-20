@@ -3,6 +3,7 @@ dist/
 *.b64
 *.log
 openwrt/usr/share/rvpn/bin/nfqws
+openwrt/usr/share/rvpn/zapret-strategies/_raw_bats/
 .openwrt-secrets/
 tools/wifi-qr.docx
-
+downloads/

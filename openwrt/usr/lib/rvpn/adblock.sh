@@ -45,52 +45,89 @@ adblock_normalize_stream() {
 	'
 }
 
-adblock_is_allowed() {
-	host=$1
-	[ -f "$ADBLOCK_ALLOW" ] || return 1
-	# exact or suffix match against allow list entries
-	while IFS= read -r a || [ -n "$a" ]; do
-		a=$(echo "$a" | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' | tr 'A-Z' 'a-z')
-		[ -n "$a" ] || continue
-		[ "$host" = "$a" ] && return 0
-		case "$host" in
-		*."$a") return 0 ;;
-		esac
-	done <"$ADBLOCK_ALLOW"
-	return 1
-}
-
-# Build merged domain list into $1 (raw hostnames).
+# Build merged domain list into $1. Allowlist via label-strip O(depth); parent prune.
 adblock_build_domains() {
 	out=$1
 	tmp=$RVPN_RUN/adblock.build.$$
 	mkdir -p "$RVPN_RUN"
 	: >"$tmp"
-	[ -f "$ADBLOCK_CACHE" ] && adblock_normalize_stream <"$ADBLOCK_CACHE" >>"$tmp"
+	# Cache is already normalized+sorted by adblock_fetch — cat as-is
+	if [ -f "$ADBLOCK_CACHE" ] && [ -s "$ADBLOCK_CACHE" ]; then
+		cat "$ADBLOCK_CACHE" >>"$tmp"
+	fi
 	[ -f "$ADBLOCK_SEED" ] && adblock_normalize_stream <"$ADBLOCK_SEED" >>"$tmp"
 	[ -f "$ADBLOCK_USER" ] && adblock_normalize_stream <"$ADBLOCK_USER" >>"$tmp"
 	sort -u "$tmp" >"$tmp.u"
-	: >"$out"
-	while IFS= read -r h || [ -n "$h" ]; do
-		[ -n "$h" ] || continue
-		adblock_is_allowed "$h" && continue
-		echo "$h" >>"$out"
-	done <"$tmp.u"
-	rm -f "$tmp" "$tmp.u"
+	# Shortest-first: parents enter blocked[] before children → parent_blocked prunes
+	awk '{ print length($0) "\t" $0 }' "$tmp.u" | sort -t'	' -k1,1n -k2,2 | cut -f2- >"$tmp.len"
+	awk -v allowfile="$ADBLOCK_ALLOW" '
+		BEGIN {
+			if (allowfile != "") {
+				while ((getline line < allowfile) > 0) {
+					sub(/#.*/, "", line)
+					gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+					line = tolower(line)
+					if (line != "") allow[line] = 1
+				}
+				close(allowfile)
+			}
+		}
+		function is_allowed(h,   n, i, parts, cand) {
+			if (h in allow) return 1
+			n = split(h, parts, ".")
+			if (n < 2) return 0
+			cand = parts[n]
+			if (cand in allow) return 1
+			for (i = n - 1; i >= 1; i--) {
+				cand = parts[i] "." cand
+				if (cand in allow) return 1
+			}
+			return 0
+		}
+		function parent_blocked(h,   n, i, parts, cand) {
+			n = split(h, parts, ".")
+			if (n < 2) return 0
+			cand = parts[n]
+			if (cand in blocked) return 1
+			for (i = n - 1; i >= 2; i--) {
+				cand = parts[i] "." cand
+				if (cand in blocked) return 1
+			}
+			return 0
+		}
+		NF && !is_allowed($0) {
+			if (parent_blocked($0)) next
+			blocked[$0] = 1
+			print
+		}
+	' "$tmp.len" >"$out"
+	rm -f "$tmp" "$tmp.u" "$tmp.len"
+}
+
+adblock_file_hash() {
+	f=$1
+	[ -f "$f" ] || { echo ""; return 0; }
+	if command -v md5sum >/dev/null 2>&1; then
+		md5sum "$f" 2>/dev/null | awk '{print $1}'
+	elif command -v sha256sum >/dev/null 2>&1; then
+		sha256sum "$f" 2>/dev/null | awk '{print $1}'
+	else
+		# Fallback: size + first/last lines (good enough for skip-restart)
+		wc -c <"$f" | tr -d ' '
+		head -1 "$f" 2>/dev/null
+		tail -1 "$f" 2>/dev/null
+	fi
 }
 
 adblock_generate_conf() {
 	doms=$RVPN_RUN/adblock.domains.$$
 	adblock_build_domains "$doms"
 	n=$(wc -l <"$doms" | tr -d ' ')
+	# Stable body (no timestamp) so unchanged lists skip dnsmasq restart
 	{
-		echo "# Skvoz DNS adblock — generated $(date -u +%Y-%m-%dT%H:%MZ 2>/dev/null || date)"
+		echo "# Skvoz DNS adblock"
 		echo "# domains=$n"
-		while IFS= read -r h || [ -n "$h" ]; do
-			[ -n "$h" ] || continue
-			# dnsmasq: block A/AAAA
-			printf 'address=/%s/0.0.0.0\n' "$h"
-		done <"$doms"
+		awk 'NF { printf "address=/%s/0.0.0.0\n", $0 }' "$doms"
 	} >"$ADBLOCK_CONF"
 	rm -f "$doms"
 	ts=$(date -u +%Y-%m-%dT%H:%MZ 2>/dev/null || date)
@@ -207,8 +244,10 @@ adblock_dns_restart() {
 adblock_apply() {
 	mkdir -p "$RVPN_RUN"
 	if ! adblock_enabled; then
-		adblock_remove_conf
-		adblock_dns_restart || dns_reload
+		if [ -f "$ADBLOCK_LINK" ] || [ -L "$ADBLOCK_LINK" ]; then
+			adblock_remove_conf
+			adblock_dns_restart || dns_reload
+		fi
 		log "adblock: off"
 		return 0
 	fi
@@ -216,11 +255,17 @@ adblock_apply() {
 		log "adblock: no list available"
 		return 1
 	}
+	old_hash=$(adblock_file_hash "$ADBLOCK_LINK")
 	n=$(adblock_generate_conf)
 	adblock_install_conf || {
 		log "adblock: install conf failed"
 		return 1
 	}
+	new_hash=$(adblock_file_hash "$ADBLOCK_LINK")
+	if [ -n "$old_hash" ] && [ -n "$new_hash" ] && [ "$old_hash" = "$new_hash" ]; then
+		log "adblock: on ($n domains, conf unchanged — skip dns restart)"
+		return 0
+	fi
 	if ! adblock_dns_restart; then
 		log "adblock: apply aborted (dnsmasq recovery)"
 		return 1
@@ -231,7 +276,9 @@ adblock_apply() {
 
 adblock_update() {
 	adblock_fetch || return 1
-	adblock_enabled && adblock_apply
+	if adblock_enabled; then
+		adblock_apply || return 1
+	fi
 	return 0
 }
 
@@ -268,6 +315,6 @@ adblock_cron_tick() {
 	fi
 	if adblock_fetch; then
 		echo "$now" >"$stamp"
-		adblock_apply
+		adblock_apply || log "adblock: cron apply failed"
 	fi
 }

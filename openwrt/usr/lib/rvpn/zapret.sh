@@ -1,7 +1,8 @@
 #!/bin/sh
-# zapret / nfqws — DPI bypass for dpi.txt
+# zapret / nfqws — DPI bypass via Flowseal strategies + dpi hostlists
 
 . /usr/lib/rvpn/common.sh
+. /usr/lib/rvpn/zapret-strat.sh
 
 NFQWS_BIN=/opt/rvpn/nfqws
 NFQWS_ALT=/usr/bin/nfqws
@@ -41,7 +42,6 @@ zapret_kill_ours() {
 		kill "$(cat "$ZAP_PID")" 2>/dev/null || true
 		rm -f "$ZAP_PID"
 	fi
-	# Match only our binary path
 	pids=$(pgrep -f '^/opt/rvpn/nfqws' 2>/dev/null || true)
 	for p in $pids; do
 		kill "$p" 2>/dev/null || true
@@ -66,53 +66,49 @@ zapret_start() {
 	case "$qnum" in
 	''|*[!0-9]*) qnum=200 ;;
 	esac
-	hl="$RVPN_RULES/dpi.txt"
+
+	id=$(zapret_strat_id)
+	hl=$(zapret_hostlist_build)
+	zapret_strat_resolve_args "$id" "$hl" || {
+		log "ERROR: cannot resolve strategy $id — fallback ALT11 inline"
+		# minimal fallback matching general_alt11
+		fake_dir=/usr/share/rvpn/fake
+		printf '%s\n' \
+			"--filter-tcp=80,443" \
+			"--hostlist=$hl" \
+			"--dpi-desync=fake,multisplit" \
+			"--dpi-desync-split-seqovl=664" \
+			"--dpi-desync-split-pos=1" \
+			"--dpi-desync-fooling=ts" \
+			"--dpi-desync-repeats=8" \
+			>"$ZAP_STRAT_ARGS"
+		[ -f "$fake_dir/stun.bin" ] && \
+			echo "--dpi-desync-fake-tls=$fake_dir/stun.bin" >>"$ZAP_STRAT_ARGS"
+		[ -f "$fake_dir/tls_clienthello_max_ru.bin" ] && {
+			echo "--dpi-desync-fake-tls=$fake_dir/tls_clienthello_max_ru.bin" >>"$ZAP_STRAT_ARGS"
+			echo "--dpi-desync-fake-http=$fake_dir/tls_clienthello_max_ru.bin" >>"$ZAP_STRAT_ARGS"
+			echo "--dpi-desync-split-seqovl-pattern=$fake_dir/tls_clienthello_max_ru.bin" >>"$ZAP_STRAT_ARGS"
+		}
+	}
 
 	zapret_kill_ours
 	sleep 1
 
-	# Fake payloads — prefer ALT11 (max_ru + stun), else google clienthello.
-	fake_args=""
-	fake_dir=""
-	for d in /usr/share/rvpn/fake /opt/zapret/files/fake /opt/rvpn/fake; do
-		[ -d "$d" ] && fake_dir="$d" && break
-	done
-	if [ -n "$fake_dir" ]; then
-		[ -f "$fake_dir/stun.bin" ] && \
-			fake_args="$fake_args --dpi-desync-fake-tls=$fake_dir/stun.bin"
-		if [ -f "$fake_dir/tls_clienthello_max_ru.bin" ]; then
-			fake_args="$fake_args --dpi-desync-fake-tls=$fake_dir/tls_clienthello_max_ru.bin"
-			fake_args="$fake_args --dpi-desync-fake-http=$fake_dir/tls_clienthello_max_ru.bin"
-			fake_args="$fake_args --dpi-desync-split-seqovl-pattern=$fake_dir/tls_clienthello_max_ru.bin"
-		elif [ -f "$fake_dir/tls_clienthello_www_google_com.bin" ]; then
-			fake_args="$fake_args --dpi-desync-fake-tls=$fake_dir/tls_clienthello_www_google_com.bin"
-			fake_args="$fake_args --dpi-desync-split-seqovl-pattern=$fake_dir/tls_clienthello_www_google_com.bin"
-		fi
-	fi
+	# Build argv from args file
+	set -- --daemon --pidfile="$ZAP_PID" --qnum="$qnum"
+	while IFS= read -r a || [ -n "$a" ]; do
+		[ -n "$a" ] || continue
+		set -- "$@" "$a"
+	done <"$ZAP_STRAT_ARGS"
 
-	# Strategy from zapret-discord-youtube «general (ALT11).bat» TCP hostlist line:
-	# fake,multisplit + seqovl=664 + split-pos=1 + fooling=ts + repeats=8
-	# shellcheck disable=SC2086
-	"$b" \
-		--daemon \
-		--pidfile="$ZAP_PID" \
-		--qnum="$qnum" \
-		--filter-tcp=80,443 \
-		--hostlist="$hl" \
-		--dpi-desync=fake,multisplit \
-		--dpi-desync-split-seqovl=664 \
-		--dpi-desync-split-pos=1 \
-		--dpi-desync-fooling=ts \
-		--dpi-desync-repeats=8 \
-		$fake_args \
-		>/tmp/rvpn/nfqws.log 2>&1
+	"$b" "$@" >/tmp/rvpn/nfqws.log 2>&1
 
 	sleep 2
 	if zapret_running; then
-		log "nfqws started qnum=$qnum"
+		log "nfqws started qnum=$qnum strategy=$id"
 		return 0
 	fi
-	log "ERROR: nfqws failed"
+	log "ERROR: nfqws failed strategy=$id"
 	tail -30 /tmp/rvpn/nfqws.log >>"$RVPN_LOG" 2>/dev/null
 	return 1
 }

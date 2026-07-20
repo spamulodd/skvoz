@@ -49,20 +49,32 @@ $files = @(
   @{ L = "usr\lib\rvpn\nft.sh"; R = "/usr/lib/rvpn/nft.sh" },
   @{ L = "usr\lib\rvpn\singbox.sh"; R = "/usr/lib/rvpn/singbox.sh" },
   @{ L = "usr\lib\rvpn\zapret.sh"; R = "/usr/lib/rvpn/zapret.sh" },
+  @{ L = "usr\lib\rvpn\zapret-strat.sh"; R = "/usr/lib/rvpn/zapret-strat.sh" },
+  @{ L = "usr\lib\rvpn\zapret-sync.sh"; R = "/usr/lib/rvpn/zapret-sync.sh" },
+  @{ L = "usr\lib\rvpn\zapret-test.sh"; R = "/usr/lib/rvpn/zapret-test.sh" },
+  @{ L = "usr\lib\rvpn\nfqws-fetch.sh"; R = "/usr/lib/rvpn/nfqws-fetch.sh" },
+  @{ L = "usr\lib\rvpn\update.sh"; R = "/usr/lib/rvpn/update.sh" },
+  @{ L = "usr\lib\rvpn\selftest.sh"; R = "/usr/lib/rvpn/selftest.sh" },
   @{ L = "usr\lib\rvpn\adblock.sh"; R = "/usr/lib/rvpn/adblock.sh" },
   @{ L = "usr\lib\rvpn\health.sh"; R = "/usr/lib/rvpn/health.sh" },
   @{ L = "usr\lib\rvpn\cidr-sync.sh"; R = "/usr/lib/rvpn/cidr-sync.sh" },
   @{ L = "usr\lib\rvpn\watchdog.sh"; R = "/usr/lib/rvpn/watchdog.sh" },
   @{ L = "usr\lib\rvpn\sub.sh"; R = "/usr/lib/rvpn/sub.sh" },
   @{ L = "usr\lib\rvpn\node-pool.sh"; R = "/usr/lib/rvpn/node-pool.sh" },
+  @{ L = "usr\lib\rvpn\ui-api.sh"; R = "/usr/lib/rvpn/ui-api.sh" },
   @{ L = "usr\lib\rvpn\clash-parse.awk"; R = "/usr/lib/rvpn/clash-parse.awk" },
+  @{ L = "usr\lib\rvpn\sub-filter.awk"; R = "/usr/lib/rvpn/sub-filter.awk" },
+  @{ L = "usr\share\rvpn\VERSION"; R = "/usr/share/rvpn/VERSION" },
+  @{ L = "usr\share\rvpn\rules\categories.json"; R = "/usr/share/rvpn/rules/categories.json" },
   @{ L = "usr\share\rvpn\rules\dpi.txt"; R = "/usr/share/rvpn/rules/dpi.txt" },
+  @{ L = "usr\share\rvpn\rules\dpi-user.txt"; R = "/usr/share/rvpn/rules/dpi-user.txt" },
   @{ L = "usr\share\rvpn\rules\adblock-seed.txt"; R = "/usr/share/rvpn/rules/adblock-seed.txt" },
   @{ L = "usr\share\rvpn\rules\adblock-user.txt"; R = "/usr/share/rvpn/rules/adblock-user.txt" },
   @{ L = "usr\share\rvpn\rules\adblock-allow.txt"; R = "/usr/share/rvpn/rules/adblock-allow.txt" },
   @{ L = "usr\share\rvpn\rules\vpn-domains.txt"; R = "/usr/share/rvpn/rules/vpn-domains.txt" },
   @{ L = "usr\share\rvpn\rules\vpn-cidr.txt"; R = "/usr/share/rvpn/rules/vpn-cidr.txt" },
   @{ L = "usr\share\rvpn\rules\games-domains.txt"; R = "/usr/share/rvpn/rules/games-domains.txt" },
+  @{ L = "usr\share\rvpn\rules\games-user.txt"; R = "/usr/share/rvpn/rules/games-user.txt" },
   @{ L = "usr\share\rvpn\rules\ROUTING.md"; R = "/usr/share/rvpn/rules/ROUTING.md" },
   @{ L = "usr\share\rvpn\rules\SUBSCRIPTIONS.md"; R = "/usr/share/rvpn/rules/SUBSCRIPTIONS.md" },
   @{ L = "usr\share\rvpn\rules\README.md"; R = "/usr/share/rvpn/rules/README.md" },
@@ -90,15 +102,43 @@ function Send-BinaryFile([string]$LocalPath, [string]$RemotePath) {
   Invoke-Router "base64 -d '$tmpB64' > '$RemotePath' && rm -f '$tmpB64'"
 }
 
-# ALT11 fake TLS/HTTP payloads for nfqws
-Invoke-Router "mkdir -p /usr/share/rvpn/fake"
-foreach ($bin in @("stun.bin", "tls_clienthello_max_ru.bin", "tls_clienthello_www_google_com.bin")) {
+# Flowseal fake TLS/HTTP/QUIC payloads for nfqws
+Invoke-Router "mkdir -p /usr/share/rvpn/fake /usr/share/rvpn/zapret-strategies/lists"
+foreach ($bin in @(
+  "stun.bin",
+  "tls_clienthello_max_ru.bin",
+  "tls_clienthello_www_google_com.bin",
+  "tls_clienthello_4pda_to.bin",
+  "quic_initial_www_google_com.bin",
+  "quic_initial_dbankcloud_ru.bin"
+)) {
   $lp = Join-Path $OpenWrt "usr\share\rvpn\fake\$bin"
   if (Test-Path $lp) {
     Write-Host "Upload fake/$bin"
     Send-BinaryFile $lp "/usr/share/rvpn/fake/$bin"
   }
 }
+
+# Flowseal strategies + lists (text)
+$stratLocal = Join-Path $OpenWrt "usr\share\rvpn\zapret-strategies"
+Get-ChildItem $stratLocal -Filter "*.strategy" | ForEach-Object {
+  Write-Host "Upload strategy $($_.Name)"
+  Send-TextFile $_.FullName "/usr/share/rvpn/zapret-strategies/$($_.Name)"
+}
+foreach ($meta in @("INDEX", "META.json")) {
+  $mp = Join-Path $stratLocal $meta
+  if (Test-Path $mp) {
+    Send-TextFile $mp "/usr/share/rvpn/zapret-strategies/$meta"
+  }
+}
+foreach ($lst in @("list-general.txt", "list-exclude.txt", "list-google.txt", "ipset-exclude.txt", "ipset-all.txt")) {
+  $lp = Join-Path $stratLocal "lists\$lst"
+  if (Test-Path $lp) {
+    Write-Host "Upload lists/$lst"
+    Send-TextFile $lp "/usr/share/rvpn/zapret-strategies/lists/$lst"
+  }
+}
+Invoke-Router "uci -q get rvpn.main.zapret_strategy >/dev/null || uci set rvpn.main.zapret_strategy=general_alt11; uci commit rvpn"
 
 # optional nfqws binary (mipsel)
 $nfqLocal = Join-Path $OpenWrt "usr\share\rvpn\bin\nfqws"

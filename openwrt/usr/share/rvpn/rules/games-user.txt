@@ -1,0 +1,1 @@
+# User games DIRECT (quick-add from UI). Merged with games-domains.txt.
