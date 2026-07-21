@@ -1,1 +1,1 @@
-0.2.2-dnsfix
+0.2.2-updtest
