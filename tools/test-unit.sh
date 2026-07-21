@@ -202,7 +202,7 @@ grep -q 'time100.ru' "$ROOT/openwrt/usr/share/rvpn/rules/dpi.txt" \
 	&& ok "time100.ru in dpi.txt" || bad "time100.ru missing from dpi"
 
 # --- App Store must stay DIRECT (FakeIP itunes/mzstatic hangs iOS App Store) ---
-grep -E '^[[:space:]]*(itunes\.apple\.com|mzstatic\.com)[[:space:]]*$' \
+grep -E '^[[:space:]]*(itunes\.apple\.com|mzstatic\.com|music\.apple\.com)[[:space:]]*$' \
 	"$ROOT/openwrt/usr/share/rvpn/rules/vpn-domains.txt" \
 	&& bad "App Store domain on VPN" || ok "App Store domains not on VPN"
 grep -q 'push.apple.com' "$ROOT/openwrt/usr/share/rvpn/rules/vpn-domains.txt" \

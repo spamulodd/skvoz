@@ -151,10 +151,10 @@ dev-c.com
 patreon.com
 patreonusercontent.com
 patreoncommunity.com
-# --- Apple: App Store needs DIRECT (itunes/mzstatic). Music + APNs only via VPN ---
-music.apple.com
+# --- Apple: App Store MUST stay DIRECT. Only APNs via VPN (ISP often NXDOMAIN on push) ---
 push.apple.com
-# NOT VPN: itunes.apple.com, mzstatic.com, apps.apple.com — FakeIP breaks App Store load
+# NOT VPN: itunes.apple.com, mzstatic.com, apps.apple.com, music.apple.com
+# FakeIP on those → iOS App Store «Загрузка…» / «Не удалось подключиться»
 
 # FCM / Crashlytics HTTPS: under googleapis.com / google.com. mtalk → games-domains.
 firebase-settings.crashlytics.com
