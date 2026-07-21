@@ -201,6 +201,13 @@ grep -E '^[[:space:]]*time100\.ru[[:space:]]*$' "$ROOT/openwrt/usr/share/rvpn/ru
 grep -q 'time100.ru' "$ROOT/openwrt/usr/share/rvpn/rules/dpi.txt" \
 	&& ok "time100.ru in dpi.txt" || bad "time100.ru missing from dpi"
 
+# --- App Store must stay DIRECT (FakeIP itunes/mzstatic hangs iOS App Store) ---
+grep -E '^[[:space:]]*(itunes\.apple\.com|mzstatic\.com)[[:space:]]*$' \
+	"$ROOT/openwrt/usr/share/rvpn/rules/vpn-domains.txt" \
+	&& bad "App Store domain on VPN" || ok "App Store domains not on VPN"
+grep -q 'push.apple.com' "$ROOT/openwrt/usr/share/rvpn/rules/vpn-domains.txt" \
+	&& ok "APNs push on VPN" || bad "push.apple.com missing"
+
 # --- sing-box TG speed: FakeIP/CIDR before sniff; dns-in hijack first ---
 grep -q '"inbound": \["dns-in"\]' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
 	&& ok "dns-in hijack first" || bad "dns-in hijack missing"

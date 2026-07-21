@@ -15,7 +15,8 @@
 | Instagram / Meta / Discord / TikTok / X (+ notify/CDN companions) | **VPN** | `vpn-domains.txt` (+ meta в `vpn-cidr.txt`) |
 | Spotify / Twitch / SoundCloud / Reddit | **VPN** | `vpn-domains.txt` |
 | Patreon / LinkedIn / Notion / Figma / Canva | **VPN** | `vpn-domains.txt` |
-| Apple Music artwork + APNs (`push.apple.com`) | **VPN** | `vpn-domains.txt` |
+| Apple Music (`music.apple.com`) + APNs (`push.apple.com`) | **VPN** | `vpn-domains.txt` |
+| App Store (`itunes.apple.com`, `mzstatic.com`, `apps.apple.com`) | **DIRECT** | не в VPN — иначе «Загрузка…» |
 | Google FCM HTTPS | **VPN** | под `googleapis.com`; **mtalk:5228 DIRECT** (`games-domains.txt`) — иначе Rockstar |
 | Microsoft WNS (`notify.windows.com` / `wns.windows.com`) | **VPN** | `vpn-domains.txt` |
 | Gemini / ChatGPT / news | **VPN** | `vpn-domains.txt` (Gemini + clients6/gstatic/apis companions — иначе RU DIRECT → geo-block) |

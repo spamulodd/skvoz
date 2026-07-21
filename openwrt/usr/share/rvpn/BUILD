@@ -1,1 +1,1 @@
-0.2.5-updtest
+0.2.6-updtest
