@@ -109,6 +109,7 @@ start_service() {
 		return 1
 	fi
 	echo running >"$RVPN_STATE"
+	rvpn_ui_cache_flush
 	if [ "$vpn_ok" = "1" ]; then
 		watchdog_start
 		if [ -f /usr/lib/rvpn/zapret-sync.sh ]; then
@@ -130,6 +131,7 @@ start_service() {
 stop_service() {
 	log "stop requested"
 	rvpn_runtime_failopen
+	rvpn_ui_cache_flush
 	echo stopped >"$RVPN_STATE"
 	log "stop done (fail-open)"
 }

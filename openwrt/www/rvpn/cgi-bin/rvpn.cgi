@@ -119,16 +119,19 @@ set)
 	zapret)
 		uci set rvpn.main.zapret_enabled="$on"
 		uci commit rvpn
+		rvpn_ui_cache_flush
 		svc_async restart
 		;;
 	vpn)
 		uci set rvpn.main.vpn_enabled="$on"
 		uci commit rvpn
+		rvpn_ui_cache_flush
 		svc_async restart
 		;;
 	adblock)
 		uci set rvpn.main.adblock_enabled="$on"
 		uci commit rvpn
+		rvpn_ui_cache_flush
 		(
 			rvpn_with_lock /bin/sh -c '
 				. /usr/lib/rvpn/adblock.sh
@@ -156,6 +159,7 @@ preset)
 	name=$(urldecode "$(get_arg name)")
 	json_hdr
 	if ui_preset_apply "$name"; then
+		rvpn_ui_cache_flush
 		svc_async restart
 	else
 		echo '{"error":"bad_preset"}'
@@ -163,12 +167,14 @@ preset)
 	;;
 stop)
 	require_auth
+	rvpn_ui_cache_flush
 	svc_async stop
 	text_hdr
 	echo OK
 	;;
 start)
 	require_auth
+	rvpn_ui_cache_flush
 	# Clear soft failsafe hold then start
 	(
 		rvpn_with_lock /bin/sh -c 'RVPN_CLEAR_HOLD=1 /etc/init.d/rvpn start' >>"$RVPN_LOG" 2>&1
@@ -178,6 +184,7 @@ start)
 	;;
 restart)
 	require_auth
+	rvpn_ui_cache_flush
 	(
 		rvpn_with_lock /bin/sh -c 'RVPN_CLEAR_HOLD=1 /etc/init.d/rvpn restart' >>"$RVPN_LOG" 2>&1
 	) &
@@ -186,6 +193,7 @@ restart)
 	;;
 failsafe)
 	require_auth
+	rvpn_ui_cache_flush
 	json_hdr
 	mode=$(get_arg mode)
 	[ -n "$mode" ] || mode=hard

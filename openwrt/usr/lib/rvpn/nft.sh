@@ -11,6 +11,7 @@ nft_flush_vpn() {
 
 nft_flush_zapret() {
 	nft list table inet rvpn_zapret >/dev/null 2>&1 && nft delete table inet rvpn_zapret || true
+	rvpn_ui_cache_flush
 }
 
 nft_flush_quic() {
@@ -132,6 +133,8 @@ nft_vpn_fp() {
 nft_apply_quic() {
 	# Reject QUIC on WAN path only. NEVER reject FakeIP / vpn_cidr — that
 	# runs before tproxy and broke YouTube API + Telegram media UDP.
+	# TG: DC/CDN real IPs live in vpn_cidr → UDP/443 accepted → VPN tproxy.
+	# MTProto on other UDP ports is untouched (only udp dport 443 rejected).
 	dq=$(uci_get disable_quic)
 	zap=$(uci_get zapret_enabled)
 	vpn=$(uci_get vpn_enabled)

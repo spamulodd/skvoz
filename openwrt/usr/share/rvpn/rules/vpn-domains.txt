@@ -31,10 +31,13 @@ labs.google
 # --- Telegram (domains + CDN; DC/media IPs also in vpn-cidr.txt) ---
 telegram.org
 t.me
+tx.me
 telegra.ph
 tdesktop.com
 telegram.me
 telegram.dog
+tg.dev
+usercontent.dev
 cdn-telegram.org
 telegramcdn.org
 telegram-cdn.org
@@ -42,6 +45,7 @@ telesco.pe
 legra.ph
 graph.org
 telegram.space
+fragment.com
 # --- Meta / Instagram / WhatsApp / Facebook (site + CDN + MQTT/push edges) ---
 instagram.com
 cdninstagram.com

@@ -187,6 +187,41 @@ reject_rel 'usr/lib/rvpn/x.sh' && bad "false reject good path" || ok "allow good
 grep -q 'patreon.com' "$ROOT/openwrt/usr/share/rvpn/rules/vpn-domains.txt" \
 	&& ok "patreon in vpn-domains" || bad "patreon missing"
 
+# --- Telegram: VPN lists, not games/dpi; time100 stays off VPN ---
+grep -q 'cdn-telegram.org' "$ROOT/openwrt/usr/share/rvpn/rules/vpn-domains.txt" \
+	&& ok "telegram CDN in vpn-domains" || bad "telegram CDN missing"
+grep -q 'tg.dev' "$ROOT/openwrt/usr/share/rvpn/rules/vpn-domains.txt" \
+	&& ok "tg.dev in vpn-domains" || bad "tg.dev missing"
+grep -qi 'telegram' "$ROOT/openwrt/usr/share/rvpn/rules/games-domains.txt" \
+	&& bad "telegram in games-domains" || ok "telegram not in games-domains"
+grep -qi 'telegram\|^t\.me$' "$ROOT/openwrt/usr/share/rvpn/rules/dpi.txt" \
+	&& bad "telegram in dpi.txt" || ok "telegram not in dpi.txt"
+grep -E '^[[:space:]]*time100\.ru[[:space:]]*$' "$ROOT/openwrt/usr/share/rvpn/rules/vpn-domains.txt" \
+	&& bad "time100.ru in vpn-domains" || ok "time100.ru not on VPN"
+grep -q 'time100.ru' "$ROOT/openwrt/usr/share/rvpn/rules/dpi.txt" \
+	&& ok "time100.ru in dpi.txt" || bad "time100.ru missing from dpi"
+
+# --- sing-box TG speed: ip_cidr before sniff, domain after sniff, short timeout ---
+grep -q '"ip_cidr".*"outbound": "rvpn-urltest"' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
+	&& ok "singbox ip_cidr vpn route" || bad "singbox ip_cidr route"
+grep -q '"timeout": "200ms"' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
+	&& ok "singbox sniff 200ms" || bad "singbox sniff timeout"
+before=$(grep -n 'ip_cidr' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" | head -1 | cut -d: -f1)
+after=$(grep -n '"action": "sniff"' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" | head -1 | cut -d: -f1)
+dom=$(grep -n 'domain_suffix.*vpn_dom.*"outbound": "rvpn-urltest"' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" | head -1 | cut -d: -f1)
+[ -n "$before" ] && [ -n "$after" ] && [ "$before" -lt "$after" ] \
+	&& ok "ip_cidr before sniff" || bad "ip_cidr after sniff"
+[ -n "$dom" ] && [ -n "$after" ] && [ "$dom" -gt "$after" ] \
+	&& ok "domain after sniff (SNI fallback)" || bad "domain not after sniff"
+grep -q 'up_mbps' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
+	&& ok "HY2 bandwidth hints" || bad "HY2 bandwidth hints"
+grep -q "urltest_interval '5m'" "$ROOT/openwrt/etc/config/rvpn" \
+	&& ok "urltest default 5m" || bad "urltest interval default"
+
+# --- nft QUIC skips vpn_cidr (TG real IPs) ---
+grep -q 'ip daddr @vpn_cidr accept' "$ROOT/openwrt/usr/lib/rvpn/nft.sh" \
+	&& ok "nft quic skip vpn_cidr" || bad "nft quic skip vpn_cidr"
+
 # --- DNS orphan heal / failsafe ---
 grep -q 'dns_heal_orphan' "$ROOT/openwrt/usr/lib/rvpn/dns.sh" \
 	&& ok "dns_heal_orphan" || bad "dns_heal_orphan missing"

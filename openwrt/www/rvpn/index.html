@@ -854,22 +854,19 @@ function switchTab(tab) {
 }
 
 function initDashboard() {
-  refreshDashStatus();
-  loadDashVps();
+  Promise.all([
+    refreshDashStatus().catch(() => {}),
+    loadDashVps().catch(() => {})
+  ]);
 }
 
 async function refreshDashStatus() {
   try {
-    const [snap, statRaw] = await Promise.all([
-      apiJson('snapshot').catch(()=>({})),
-      apiJson('status').catch(()=>({}))
-    ]);
-    // status fields live at top-level of status OR nested under snapshot.status
-    const st = Object.assign({}, (snap && snap.status) || {}, statRaw || {});
+    const st = await apiJson('status').catch(() => ({}));
 
-    const ver = st.version || snap.version || '—';
+    const ver = st.version || '—';
     const build = st.build || '';
-    const up = st.uptime || snap.uptime || '—';
+    const up = st.uptime || '—';
     const node = st.vpn_node || st.node_now || '—';
     const delay = (st.node_delay_ms != null && st.node_delay_ms !== '') ? (st.node_delay_ms + ' ms') : '—';
     const vpnOn = st.layer_vpn != null ? st.layer_vpn : st.vpn_enabled;

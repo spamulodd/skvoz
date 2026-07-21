@@ -49,8 +49,19 @@ CIDR (IP→VPN) обновляются раз в неделю (cron `skvoz-cidr`
 
 Клиент ходит на media DC **по IP**. Неполный `vpn-cidr.txt` = текст есть, фото/видео/стикеры только в части чатов.
 
+Домены: `telegram.org`, `t.me`, `cdn-telegram.org`, `telesco.pe`, `tg.dev`, `usercontent.dev` и др. в `vpn-domains.txt` (FakeIP).  
+Скорость файлов: DC/media IP → `vpn-cidr` **до** sniff (без ожидания 200ms); FakeIP `198.18/15` тоже в `ip_cidr`.  
+HY2: `hy2_up_mbps` / `hy2_down_mbps` (по умолчанию 1000) — подсказка congestion control.  
+urltest interval по умолчанию `5m` (меньше переключений нод mid-download).
+CDN-файлы каналов (>100k) — IP из `149.154.160.0/20` и официального cidr.txt → `vpn-cidr.txt` → nft TPROXY **до** zapret/QUIC-drop.
+
+**Скорость (sing-box):** маршрут `ip_cidr` + `domain_suffix` **до** sniff (без ожидания 800ms на DC/media). FakeIP TTL 300s.  
+**QUIC:** udp/443 reject на WAN, но FakeIP + `vpn_cidr` **accept** — TG через VPN не режется.
+
 Источники: https://core.telegram.org/resources/cidr.txt + ipverse ASN (Meta/X/Discord/Telegram).  
 Обновление: `sh tools/sync-vpn-cidr.sh` / на роутере `rvpnctl sync-cidr`.
+
+**Не VPN:** `time100.ru` → только `dpi.txt` (RU DIRECT + nfqws).
 
 ## Защиты DNS
 

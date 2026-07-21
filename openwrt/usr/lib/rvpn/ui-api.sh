@@ -150,7 +150,7 @@ ui_matrix_json() {
 	dpi_u=$(ui_count_lines "$RVPN_DPI_USER")
 	games_n=$(ui_count_lines "$RVPN_RULES/games-domains.txt")
 	games_u=$(ui_count_lines "$RVPN_GAMES_USER")
-	cidr_n=$(count_grep '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/' "$RVPN_RULES/vpn-cidr.txt")
+	cidr_n=$(count_grep_cached '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/' "$RVPN_RULES/vpn-cidr.txt")
 	adb_n=0
 	adb_upd=
 	[ -f "$RVPN_RUN/adblock.meta" ] && {
@@ -171,29 +171,9 @@ ui_matrix_json() {
 		"${cidr_n:-0}" "${cidr_age:--1}" "${adb_n:-0}" "$adb_upd_j"
 }
 
-# Cached nft table probe (~30s) — status+health share one check per poll window.
+# Cached nft table probe (~30s) — delegates to common.sh helper.
 ui_nft_table_ok() {
-	# $1 = table name under inet (rvpn_vpn / rvpn_zapret)
-	tbl=$1
-	c=$RVPN_RUN/nft.${tbl}.cache
-	now=$(date +%s 2>/dev/null || echo 0)
-	if [ -f "$c" ] && [ "$now" != 0 ]; then
-		read -r ts val <<EOF
-$(cat "$c" 2>/dev/null)
-EOF
-		case "$ts" in ''|*[!0-9]*) ;; *)
-			age=$((now - ts))
-			if [ "$age" -ge 0 ] && [ "$age" -lt 30 ]; then
-				[ "$val" = "1" ]
-				return $?
-			fi
-			;;
-		esac
-	fi
-	ok=0
-	nft list table inet "$tbl" >/dev/null 2>&1 && ok=1
-	echo "$now $ok" >"$c" 2>/dev/null || true
-	[ "$ok" = "1" ]
+	rvpn_nft_table_ok "$1"
 }
 
 ui_dns_orphan() {
@@ -218,9 +198,7 @@ ui_health_detail_json() {
 	sb=0
 	sb_alive && sb=1
 	nfq=0
-	if [ -f "$RVPN_RUN/nfqws.pid" ] && kill -0 "$(cat "$RVPN_RUN/nfqws.pid" 2>/dev/null)" 2>/dev/null; then
-		nfq=1
-	elif pgrep -f '^/opt/rvpn/nfqws' >/dev/null 2>&1; then
+	if nfqws_alive; then
 		nfq=1
 	fi
 	fo=
@@ -260,6 +238,7 @@ ui_failsafe_run() {
 	. /usr/lib/rvpn/watchdog.sh
 
 	log "FAILSAFE mode=$mode"
+	rvpn_ui_cache_flush
 	watchdog_stop 2>/dev/null || true
 	nft_flush_zapret 2>/dev/null || true
 	nft_flush_vpn 2>/dev/null || true
@@ -601,6 +580,21 @@ ui_load_json() {
 
 # Single UI poll: status + health + matrix + domains + subs + pool + spark samples.
 ui_snapshot_json() {
+	cache=$RVPN_RUN/ui_snapshot.json.cache
+	now=$(date +%s 2>/dev/null || echo 0)
+	if [ -f "$cache" ] && [ "$now" != 0 ]; then
+		read -r ts <<EOF
+$(sed -n '1p' "$cache" 2>/dev/null)
+EOF
+		case "$ts" in ''|*[!0-9]*) ;; *)
+			age=$((now - ts))
+			if [ "$age" -ge 0 ] && [ "$age" -lt 5 ]; then
+				sed -n '2p' "$cache" 2>/dev/null
+				return 0
+			fi
+			;;
+		esac
+	fi
 	st=$(health_status_json | head -1 | tr -d '\r')
 	he=$(ui_health_detail_json | head -1 | tr -d '\r')
 	mx=$(ui_matrix_json | head -1 | tr -d '\r')
@@ -615,8 +609,11 @@ ui_snapshot_json() {
 	[ -n "$subs" ] || subs='{"ok":1,"subs":[]}'
 	[ -n "$pool" ] || pool='{"ok":1,"nodes":[]}'
 	[ -n "$load" ] || load='{"ok":1,"samples":[]}'
-	printf '{"ok":1,"status":%s,"health":%s,"matrix":%s,"domains":%s,"subs":%s,"pool":%s,"load":%s}\n' \
-		"$st" "$he" "$mx" "$dom" "$subs" "$pool" "$load"
+	out=$(printf '{"ok":1,"status":%s,"health":%s,"matrix":%s,"domains":%s,"subs":%s,"pool":%s,"load":%s}\n' \
+		"$st" "$he" "$mx" "$dom" "$subs" "$pool" "$load")
+	printf '%s\n' "$now" >"$cache"
+	printf '%s\n' "$out" >>"$cache"
+	printf '%s\n' "$out"
 }
 
 ui_preset_apply() {

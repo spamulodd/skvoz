@@ -62,6 +62,53 @@ EOF
 	[ "$ok" = "1" ]
 }
 
+# Cached nft table existence (~30s) — status/health share one probe per window.
+rvpn_nft_table_ok() {
+	tbl=$1
+	ttl=${2:-30}
+	c=$RVPN_RUN/nft.${tbl}.cache
+	now=$(date +%s 2>/dev/null || echo 0)
+	if [ -f "$c" ] && [ "$now" != 0 ]; then
+		read -r ts val <<EOF
+$(cat "$c" 2>/dev/null)
+EOF
+		case "$ts" in ''|*[!0-9]*) ;; *)
+			age=$((now - ts))
+			if [ "$age" -ge 0 ] && [ "$age" -lt "$ttl" ]; then
+				[ "$val" = "1" ]
+				return $?
+			fi
+			;;
+		esac
+	fi
+	ok=0
+	nft list table inet "$tbl" >/dev/null 2>&1 && ok=1
+	echo "$now $ok" >"$c" 2>/dev/null || true
+	[ "$ok" = "1" ]
+}
+
+# nfqws running? pidfile first, pgrep last resort.
+nfqws_alive() {
+	if [ -f "${RVPN_NFQ_RUN}/nfqws.pid" ] && kill -0 "$(cat "${RVPN_NFQ_RUN}/nfqws.pid" 2>/dev/null)" 2>/dev/null; then
+		return 0
+	fi
+	if [ -f "$RVPN_RUN/nfqws.pid" ] && kill -0 "$(cat "$RVPN_RUN/nfqws.pid" 2>/dev/null)" 2>/dev/null; then
+		return 0
+	fi
+	if [ -f /tmp/rvpn/nfqws.pid ] && kill -0 "$(cat /tmp/rvpn/nfqws.pid 2>/dev/null)" 2>/dev/null; then
+		return 0
+	fi
+	pgrep -f '^/opt/rvpn/nfqws' >/dev/null 2>&1
+}
+
+# Drop UI/status caches after nft/DNS/service state changes.
+rvpn_ui_cache_flush() {
+	rm -f "$RVPN_RUN/health_status.json.cache" \
+		"$RVPN_RUN/ui_snapshot.json.cache" \
+		"$RVPN_RUN/nft.rvpn_vpn.cache" \
+		"$RVPN_RUN/nft.rvpn_zapret.cache" 2>/dev/null || true
+}
+
 # sing-box alive via pidfile (cheap); falls back to pgrep.
 sb_alive() {
 	if [ -f "$RVPN_RUN/sing-box.pid" ]; then
@@ -164,6 +211,36 @@ count_grep() {
 	''|*[!0-9]*) echo 0 ;;
 	*) echo "$n" ;;
 	esac
+}
+
+# Cached grep count — invalidated when file mtime changes (~60s TTL).
+count_grep_cached() {
+	pat=$1
+	file=$2
+	ttl=${3:-60}
+	[ -f "$file" ] || { echo 0; return 0; }
+	mt=$(date -r "$file" +%s 2>/dev/null || echo 0)
+	safe=$(printf '%s' "$file" | tr '/.' '__')
+	c=$RVPN_RUN/count.${safe}.cache
+	now=$(date +%s 2>/dev/null || echo 0)
+	if [ -f "$c" ] && [ "$now" != 0 ] && [ "$mt" != 0 ]; then
+		read -r ts mts val <<EOF
+$(cat "$c" 2>/dev/null)
+EOF
+		case "$ts" in ''|*[!0-9]*) ;; *)
+			if [ "$mts" = "$mt" ]; then
+				age=$((now - ts))
+				if [ "$age" -ge 0 ] && [ "$age" -lt "$ttl" ]; then
+					echo "$val"
+					return 0
+				fi
+			fi
+			;;
+		esac
+	fi
+	val=$(count_grep "$pat" "$file")
+	echo "$now $mt $val" >"$c" 2>/dev/null || true
+	echo "$val"
 }
 
 norm_bool() {
@@ -305,6 +382,21 @@ rvpn_failsafe_hold_clear() {
 
 # Count UCI nodes with corrupt Reality import (short key / network-as-fingerprint).
 rvpn_corrupt_node_count() {
+	c=$RVPN_RUN/corrupt_nodes.cache
+	now=$(date +%s 2>/dev/null || echo 0)
+	if [ -f "$c" ] && [ "$now" != 0 ]; then
+		read -r ts val <<EOF
+$(cat "$c" 2>/dev/null)
+EOF
+		case "$ts" in ''|*[!0-9]*) ;; *)
+			age=$((now - ts))
+			if [ "$age" -ge 0 ] && [ "$age" -lt 45 ]; then
+				echo "$val"
+				return 0
+			fi
+			;;
+		esac
+	fi
 	n=0
 	for id in $(uci -q show rvpn 2>/dev/null | sed -n 's/^rvpn\.\([^=]*\)=node$/\1/p'); do
 		en=$(uci -q get "rvpn.$id.enabled")
@@ -320,6 +412,7 @@ rvpn_corrupt_node_count() {
 		esac
 		[ "$bad" = "1" ] && n=$((n + 1))
 	done
+	echo "$now $n" >"$c" 2>/dev/null || true
 	echo "$n"
 }
 

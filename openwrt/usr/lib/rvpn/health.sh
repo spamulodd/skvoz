@@ -91,12 +91,8 @@ health_load_sample() {
 	tx=$2
 	vpn_run=0
 	zap_run=0
-	[ -n "$(sb_pids)" ] && vpn_run=1
-	if [ -f "${RVPN_NFQ_RUN:-/var/run/rvpn-nfq}/nfqws.pid" ] && kill -0 "$(cat "${RVPN_NFQ_RUN:-/var/run/rvpn-nfq}/nfqws.pid" 2>/dev/null)" 2>/dev/null; then
-		zap_run=1
-	elif [ -f /tmp/rvpn/nfqws.pid ] && kill -0 "$(cat /tmp/rvpn/nfqws.pid 2>/dev/null)" 2>/dev/null; then
-		zap_run=1
-	elif pgrep -f '^/opt/rvpn/nfqws' >/dev/null 2>&1; then
+	sb_alive && vpn_run=1
+	if nfqws_alive; then
 		zap_run=1
 	fi
 	printf '%s %s %s %s %s %s %s %s %s\n' \
@@ -139,6 +135,30 @@ health_cron_install() {
 }
 
 health_status_json() {
+	cache=$RVPN_RUN/health_status.json.cache
+	now=$(date +%s 2>/dev/null || echo 0)
+	if [ -f "$cache" ] && [ "$now" != 0 ]; then
+		read -r ts <<EOF
+$(sed -n '1p' "$cache" 2>/dev/null)
+EOF
+		case "$ts" in ''|*[!0-9]*) ;; *)
+			age=$((now - ts))
+			if [ "$age" -ge 0 ] && [ "$age" -lt 4 ]; then
+				sed -n '2p' "$cache" 2>/dev/null
+				return 0
+			fi
+			;;
+		esac
+	fi
+	health_status_json_emit >"$cache.$$" 2>/dev/null || health_status_json_emit >"$cache.$$"
+	printf '%s\n' "$now" >"$cache"
+	cat "$cache.$$" >>"$cache"
+	out=$(cat "$cache.$$")
+	rm -f "$cache.$$"
+	printf '%s\n' "$out"
+}
+
+health_status_json_emit() {
 	zap=$(uci_get zapret_enabled)
 	vpn=$(uci_get vpn_enabled)
 	adb=$(uci_get adblock_enabled)
@@ -146,14 +166,10 @@ health_status_json() {
 	vpn_run=0
 	adb_run=0
 	adb_dom=0
-	if [ -f "${RVPN_NFQ_RUN:-/var/run/rvpn-nfq}/nfqws.pid" ] && kill -0 "$(cat "${RVPN_NFQ_RUN:-/var/run/rvpn-nfq}/nfqws.pid" 2>/dev/null)" 2>/dev/null; then
-		zap_run=1
-	elif [ -f /tmp/rvpn/nfqws.pid ] && kill -0 "$(cat /tmp/rvpn/nfqws.pid 2>/dev/null)" 2>/dev/null; then
-		zap_run=1
-	elif pgrep -f '^/opt/rvpn/nfqws' >/dev/null 2>&1; then
+	if nfqws_alive; then
 		zap_run=1
 	fi
-	[ -n "$(sb_pids)" ] && vpn_run=1
+	sb_alive && vpn_run=1
 	if [ -f /tmp/rvpn/adblock.meta ]; then
 		adb_dom=$(sed -n 's/^domains=//p' /tmp/rvpn/adblock.meta | head -1)
 	fi
@@ -182,29 +198,7 @@ health_status_json() {
 	[ -f "$RVPN_RUN/adblock.meta" ] && adb_upd=$(sed -n 's/^updated=//p' "$RVPN_RUN/adblock.meta" | head -1)
 	adb_upd_j=$(json_escape "${adb_upd:-}")
 	nft_vpn=0
-	nft_cached=0
-	# Prefer short-lived cache from ui-api (snapshot shares status+health)
-	if [ -f "$RVPN_RUN/nft.rvpn_vpn.cache" ]; then
-		read -r _nts _nval <<EOF
-$(cat "$RVPN_RUN/nft.rvpn_vpn.cache" 2>/dev/null)
-EOF
-		now=$(date +%s 2>/dev/null || echo 0)
-		case "$_nts" in ''|*[!0-9]*) ;; *)
-			age=$((now - _nts))
-			if [ "$age" -ge 0 ] && [ "$age" -lt 30 ]; then
-				nft_cached=1
-				[ "$_nval" = "1" ] && nft_vpn=1
-			fi
-			;;
-		esac
-	fi
-	if [ "$nft_cached" != "1" ]; then
-		if nft list table inet rvpn_vpn >/dev/null 2>&1; then
-			nft_vpn=1
-		fi
-		now=$(date +%s 2>/dev/null || echo 0)
-		echo "$now $nft_vpn" >"$RVPN_RUN/nft.rvpn_vpn.cache" 2>/dev/null || true
-	fi
+	rvpn_nft_table_ok rvpn_vpn && nft_vpn=1
 	wd=0
 	if [ -f "$RVPN_WD_PID" ] && kill -0 "$(cat "$RVPN_WD_PID" 2>/dev/null)" 2>/dev/null; then
 		wd=1
@@ -234,7 +228,7 @@ EOF
 	rvpn_failsafe_hold_active && failsafe_hold=1 && degraded=1
 	corrupt_nodes=$(rvpn_corrupt_node_count)
 	case "$corrupt_nodes" in ''|*[!0-9]*) corrupt_nodes=0 ;; esac
-	cidr_n=$(count_grep '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/' "$RVPN_RULES/vpn-cidr.txt")
+	cidr_n=$(count_grep_cached '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/' "$RVPN_RULES/vpn-cidr.txt")
 	cidr_age=-1
 	if [ -f "$RVPN_RULES/vpn-cidr.txt" ]; then
 		now=$(date +%s 2>/dev/null || echo 0)
