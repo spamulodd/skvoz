@@ -3,25 +3,27 @@
 RVPN_SELFTEST_SOURCED=1
 
 . /usr/lib/rvpn/common.sh
+. /usr/lib/rvpn/dns.sh
 
 selftest_run() {
 	mkdir -p "$RVPN_RUN"
 	out=/tmp/rvpn/selftest.json
-	
+
 	passed=0
 	total=0
 	checks=""
-	
+	failsafe_hint=0
+
 	add_check() {
 		id=$1
 		ok=$2
 		detail=$3
-		
+
 		[ "$ok" = "1" ] && passed=$((passed + 1))
 		total=$((total + 1))
-		
+
 		dj=$(json_escape "$detail")
-		
+
 		if [ -z "$checks" ]; then
 			checks="{\"id\":\"$id\",\"ok\":$ok,\"detail\":\"$dj\"}"
 		else
@@ -29,70 +31,124 @@ selftest_run() {
 		fi
 	}
 
-	# 1. wan_ok
+	zap=$(uci_get zapret_enabled)
+	vpn=$(uci_get vpn_enabled)
+
+	# 1. wan_ok (IP ping — independent of DNS)
 	if ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1 || ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
 		add_check "wan_ok" 1 "WAN is reachable"
 	else
 		add_check "wan_ok" 0 "WAN is unreachable"
+		failsafe_hint=1
 	fi
-	
-	# 2. dns.applied
+
+	# 2. FakeIP orphan (the reboot killer)
+	if dns_uci_points_to_fakeip && ! dns_vpn_ready; then
+		add_check "dns_orphan" 0 "FakeIP in dnsmasq but sing-box not ready — LAN DNS broken"
+		failsafe_hint=1
+	else
+		add_check "dns_orphan" 1 "No FakeIP orphan"
+	fi
+
+	# 3. DNS mode vs layers
 	dns_mode=$(cat "$RVPN_RUN/dns.applied" 2>/dev/null || echo "missing")
-	if [ "$dns_mode" != "missing" ] && [ "$dns_mode" != "off" ]; then
+	if [ "$zap" != "1" ] && [ "$vpn" != "1" ]; then
+		if dns_uci_points_to_fakeip; then
+			add_check "dns_applied" 0 "Layers off but FakeIP still in UCI"
+			failsafe_hint=1
+		else
+			add_check "dns_applied" 1 "DNS fail-open (layers off)"
+		fi
+	elif [ "$dns_mode" = "fakeip" ] || [ "$dns_mode" = "aaaa" ]; then
 		add_check "dns_applied" 1 "DNS applied: $dns_mode"
 	else
-		add_check "dns_applied" 0 "DNS not applied or off"
+		add_check "dns_applied" 0 "DNS mark missing/off while layers on ($dns_mode)"
 	fi
-	
-	# 3. sb_alive/sing-box
-	if sb_alive; then
-		add_check "sing_box" 1 "sing-box is running"
+
+	# 4. Local DNS resolve via router
+	dns_ok=0
+	if command -v nslookup >/dev/null 2>&1; then
+		if nslookup openwrt.org 127.0.0.1 >/dev/null 2>&1; then
+			dns_ok=1
+		fi
+	elif command -v resolveip >/dev/null 2>&1; then
+		resolveip -t 3 openwrt.org >/dev/null 2>&1 && dns_ok=1
+	fi
+	if [ "$dns_ok" = "1" ]; then
+		add_check "dns_resolve" 1 "Router DNS resolves openwrt.org"
 	else
-		add_check "sing_box" 0 "sing-box is not running"
+		add_check "dns_resolve" 0 "Router DNS failed — try Аварийный сброс"
+		failsafe_hint=1
 	fi
-	
-	# 4. nfqws
+
+	# 5. sing-box
+	if [ "$vpn" = "1" ]; then
+		if sb_alive; then
+			add_check "sing_box" 1 "sing-box is running"
+		else
+			add_check "sing_box" 0 "VPN on but sing-box down"
+			failsafe_hint=1
+		fi
+	else
+		add_check "sing_box" 1 "VPN layer off (sing-box not required)"
+	fi
+
+	# 6. nfqws
 	nfq=0
-	if [ -f "$RVPN_RUN/nfqws.pid" ] && kill -0 "$(cat "$RVPN_RUN/nfqws.pid" 2>/dev/null)" 2>/dev/null; then
+	if [ -f "${RVPN_NFQ_RUN:-/var/run/rvpn-nfq}/nfqws.pid" ] && kill -0 "$(cat "${RVPN_NFQ_RUN:-/var/run/rvpn-nfq}/nfqws.pid" 2>/dev/null)" 2>/dev/null; then
+		nfq=1
+	elif [ -f "$RVPN_RUN/nfqws.pid" ] && kill -0 "$(cat "$RVPN_RUN/nfqws.pid" 2>/dev/null)" 2>/dev/null; then
 		nfq=1
 	elif pgrep -f '^/opt/rvpn/nfqws' >/dev/null 2>&1; then
 		nfq=1
 	fi
-	if [ "$nfq" = "1" ]; then
-		add_check "nfqws" 1 "nfqws is running"
+	if [ "$zap" = "1" ]; then
+		if [ "$nfq" = "1" ]; then
+			add_check "nfqws" 1 "nfqws is running"
+		else
+			add_check "nfqws" 0 "zapret on but nfqws down"
+		fi
 	else
-		add_check "nfqws" 0 "nfqws is not running"
+		add_check "nfqws" 1 "zapret layer off"
 	fi
-	
-	# 5. nft rvpn_vpn/rvpn_zapret
-	if nft list table inet rvpn_vpn >/dev/null 2>&1; then
-		add_check "nft_vpn" 1 "nft table rvpn_vpn exists"
+
+	# 7. nft tables
+	if [ "$vpn" = "1" ] && sb_alive; then
+		if nft list table inet rvpn_vpn >/dev/null 2>&1; then
+			add_check "nft_vpn" 1 "nft table rvpn_vpn exists"
+		else
+			add_check "nft_vpn" 0 "nft table rvpn_vpn missing"
+		fi
 	else
-		add_check "nft_vpn" 0 "nft table rvpn_vpn missing"
+		add_check "nft_vpn" 1 "nft vpn not required"
 	fi
-	if nft list table inet rvpn_zapret >/dev/null 2>&1; then
-		add_check "nft_zapret" 1 "nft table rvpn_zapret exists"
+	if [ "$zap" = "1" ]; then
+		if nft list table inet rvpn_zapret >/dev/null 2>&1; then
+			add_check "nft_zapret" 1 "nft table rvpn_zapret exists"
+		else
+			add_check "nft_zapret" 0 "nft table rvpn_zapret missing"
+		fi
 	else
-		add_check "nft_zapret" 0 "nft table rvpn_zapret missing"
+		add_check "nft_zapret" 1 "nft zapret not required"
 	fi
-	
-	# 6. current zapret_strategy
+
+	# 8. zapret strategy
 	strat=$(uci_get zapret_strategy)
-	if [ -n "$strat" ]; then
-		add_check "zapret_strategy" 1 "Strategy: $strat"
+	if [ "$zap" != "1" ] || [ -n "$strat" ]; then
+		add_check "zapret_strategy" 1 "Strategy: ${strat:-n/a}"
 	else
 		add_check "zapret_strategy" 0 "Strategy not set"
 	fi
-	
-	# 7. ui setup_done
+
+	# 9. ui setup_done
 	setup_done=$(uci_get setup_done)
 	if [ "$setup_done" = "1" ]; then
 		add_check "setup_done" 1 "Setup is done"
 	else
 		add_check "setup_done" 0 "Setup not done"
 	fi
-	
-	# 8. github pending flags
+
+	# 10. github pending flags
 	sync_pending=0
 	{ [ -f "$RVPN_RUN/zapret_sync.pending" ] || [ -f "$RVPN_RUN/nfqws_fetch.pending" ]; } && sync_pending=1
 	if [ "$sync_pending" = "0" ]; then
@@ -100,8 +156,8 @@ selftest_run() {
 	else
 		add_check "github_sync" 0 "GitHub sync pending"
 	fi
-	
-	# 9. HTTPS probes (real IP via 1.1.1.1 — bypass FakeIP DNS)
+
+	# 11. HTTPS probes (real IP via 1.1.1.1 — bypass FakeIP DNS)
 	selftest_probe() {
 		host=$1
 		path=$2
@@ -137,12 +193,12 @@ selftest_run() {
 			add_check "probe_$host" 0 "Failed (${ms}ms)"
 		fi
 	done
-	
+
 	ok=0
 	[ "$passed" = "$total" ] && ok=1
-	
+
 	ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date)
-	
-	printf '{"ok":%s,"passed":%s,"total":%s,"checks":[%s],"ts":"%s"}\n' \
-		"$ok" "$passed" "$total" "$checks" "$ts" | tee "$out"
+
+	printf '{"ok":%s,"passed":%s,"total":%s,"failsafe_hint":%s,"checks":[%s],"ts":"%s"}\n' \
+		"$ok" "$passed" "$total" "$failsafe_hint" "$checks" "$ts" | tee "$out"
 }

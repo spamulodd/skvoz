@@ -166,6 +166,25 @@ OUT_FULL=$(pack_edition full "$FULL")
 # Also alias -all → full for older docs
 cp -f "$OUT_FULL" "$DIST_DIR/skvoz-${VERSION}-all.tar.gz"
 
+# Integrity file for OTA (required by update_run)
+SUMS=$DIST_DIR/SHA256SUMS
+: >"$SUMS"
+for f in "$OUT_TINY" "$OUT_SLIM" "$OUT_STD" "$OUT_FULL" "$DIST_DIR/skvoz-${VERSION}-all.tar.gz"; do
+	[ -f "$f" ] || continue
+	if command -v sha256sum >/dev/null 2>&1; then
+		( cd "$DIST_DIR" && sha256sum "$(basename "$f")" ) >>"$SUMS"
+	elif command -v shasum >/dev/null 2>&1; then
+		( cd "$DIST_DIR" && shasum -a 256 "$(basename "$f")" ) >>"$SUMS"
+	elif command -v openssl >/dev/null 2>&1; then
+		h=$(openssl dgst -sha256 "$f" | awk '{print $NF}')
+		printf '%s  %s\n' "$h" "$(basename "$f")" >>"$SUMS"
+	else
+		echo "error: need sha256sum/shasum/openssl for SHA256SUMS" >&2
+		exit 1
+	fi
+done
+echo "Checksums: $SUMS"
+
 NOTES=$DIST_DIR/RELEASE-NOTES-${VERSION}.md
 {
 	cat <<EOF
@@ -226,5 +245,5 @@ echo ""
 echo "Publish all assets:"
 echo "  gh release create v${VERSION} \\"
 echo "    \"$OUT_TINY\" \"$OUT_SLIM\" \"$OUT_STD\" \"$OUT_FULL\" \\"
-echo "    \"$DIST_DIR/skvoz-${VERSION}-all.tar.gz\" \\"
+echo "    \"$DIST_DIR/skvoz-${VERSION}-all.tar.gz\" \"$SUMS\" \\"
 echo "    --title \"v${VERSION}\" --notes-file \"$NOTES\""

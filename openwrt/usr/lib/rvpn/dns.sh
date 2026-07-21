@@ -1,7 +1,7 @@
 #!/bin/sh
 # DNS: FakeIP upstream when VPN on AND sing-box alive; filter-aaaa for zapret/VPN.
 # Fail-open: never point dnsmasq at FakeIP while sing-box is dead.
-# Idempotent: skip uci commit/reload when desired mode already applied.
+# Critical: UCI dhcp survives reboot, /tmp backups do not — always heal orphans.
 
 . /usr/lib/rvpn/common.sh
 
@@ -9,10 +9,57 @@ DNS_MARK_FILE=/tmp/rvpn/dns.applied
 DNS_BACKUP=/tmp/rvpn/dns.backup
 DNS_AAAA_BACKUP=/tmp/rvpn/dns.aaaa.backup
 DNS_LOCALUSE_BACKUP=/tmp/rvpn/dns.localuse.backup
+# Persistent copy — /tmp is wiped on reboot; FakeIP in UCI must not lose the real upstream.
+DNS_PERSIST_DIR=/etc/rvpn/dns-backup
 
 dns_reload() {
 	/etc/init.d/dnsmasq reload >/dev/null 2>&1 || \
 		killall -HUP dnsmasq >/dev/null 2>&1 || true
+}
+
+dns_listen_addr() {
+	listen=$(uci_get dns_listen)
+	[ -n "$listen" ] || listen=127.0.0.42
+	echo "$listen"
+}
+
+# True when dnsmasq upstream is the FakeIP listener (sing-box).
+dns_uci_points_to_fakeip() {
+	listen=$(dns_listen_addr)
+	srv=$(uci -q get dhcp.@dnsmasq[0].server 2>/dev/null || true)
+	case "$srv" in
+	*"$listen"*) return 0 ;;
+	esac
+	return 1
+}
+
+dns_backup_file_sane() {
+	f=$1
+	[ -f "$f" ] || return 1
+	listen=$(dns_listen_addr)
+	# Empty backup is ok (means "no custom servers" / use resolv.conf)
+	grep -Fq "$listen" "$f" 2>/dev/null && return 1
+	return 0
+}
+
+dns_persist_load_to_tmp() {
+	mkdir -p "$RVPN_RUN" "$DNS_PERSIST_DIR" 2>/dev/null || true
+	if [ ! -f "$DNS_BACKUP" ] && dns_backup_file_sane "$DNS_PERSIST_DIR/server"; then
+		cp -f "$DNS_PERSIST_DIR/server" "$DNS_BACKUP" 2>/dev/null || true
+		[ -f "$DNS_PERSIST_DIR/noresolv" ] && cp -f "$DNS_PERSIST_DIR/noresolv" "$DNS_BACKUP.noresolv" 2>/dev/null || true
+		[ -f "$DNS_PERSIST_DIR/aaaa" ] && cp -f "$DNS_PERSIST_DIR/aaaa" "$DNS_AAAA_BACKUP" 2>/dev/null || true
+		[ -f "$DNS_PERSIST_DIR/localuse" ] && cp -f "$DNS_PERSIST_DIR/localuse" "$DNS_LOCALUSE_BACKUP" 2>/dev/null || true
+	fi
+}
+
+dns_persist_save_from_tmp() {
+	mkdir -p "$DNS_PERSIST_DIR" 2>/dev/null || true
+	dns_backup_file_sane "$DNS_BACKUP" || return 1
+	cp -f "$DNS_BACKUP" "$DNS_PERSIST_DIR/server" 2>/dev/null || true
+	[ -f "$DNS_BACKUP.noresolv" ] && cp -f "$DNS_BACKUP.noresolv" "$DNS_PERSIST_DIR/noresolv" 2>/dev/null || true
+	[ -f "$DNS_AAAA_BACKUP" ] && cp -f "$DNS_AAAA_BACKUP" "$DNS_PERSIST_DIR/aaaa" 2>/dev/null || true
+	[ -f "$DNS_LOCALUSE_BACKUP" ] && cp -f "$DNS_LOCALUSE_BACKUP" "$DNS_PERSIST_DIR/localuse" 2>/dev/null || true
+	return 0
 }
 
 # One upstream per line (uci list may be space-separated on one line).
@@ -44,15 +91,65 @@ dns_restore_servers_from_backup() {
 }
 
 dns_backup_once() {
-	if [ ! -f "$DNS_BACKUP" ]; then
-		dns_write_server_backup
-		uci -q get dhcp.@dnsmasq[0].noresolv >"$DNS_BACKUP.noresolv" 2>/dev/null || true
+	mkdir -p "$RVPN_RUN" "$DNS_PERSIST_DIR" 2>/dev/null || true
+	dns_persist_load_to_tmp
+
+	# Already have a sane backup — keep it (never overwrite with FakeIP).
+	if dns_backup_file_sane "$DNS_BACKUP"; then
+		dns_persist_save_from_tmp || true
+		[ -f "$DNS_AAAA_BACKUP" ] || {
+			uci -q get dhcp.@dnsmasq[0].filter_aaaa >"$DNS_AAAA_BACKUP" 2>/dev/null || true
+		}
+		[ -f "$DNS_LOCALUSE_BACKUP" ] || {
+			uci -q get dhcp.@dnsmasq[0].localuse >"$DNS_LOCALUSE_BACKUP" 2>/dev/null || true
+		}
+		return 0
 	fi
+
+	# Never snapshot FakeIP upstream as "original" — that poisons restore forever.
+	if dns_uci_points_to_fakeip; then
+		log "dns backup skipped — UCI already FakeIP (no sane original)"
+		return 0
+	fi
+
+	dns_write_server_backup
+	uci -q get dhcp.@dnsmasq[0].noresolv >"$DNS_BACKUP.noresolv" 2>/dev/null || true
 	if [ ! -f "$DNS_AAAA_BACKUP" ]; then
 		uci -q get dhcp.@dnsmasq[0].filter_aaaa >"$DNS_AAAA_BACKUP" 2>/dev/null || true
 	fi
 	if [ ! -f "$DNS_LOCALUSE_BACKUP" ]; then
 		uci -q get dhcp.@dnsmasq[0].localuse >"$DNS_LOCALUSE_BACKUP" 2>/dev/null || true
+	fi
+	dns_persist_save_from_tmp || true
+}
+
+# Strip FakeIP upstream; restore real servers or fall back to ISP resolv.conf.
+dns_clear_fakeip_upstream() {
+	dns_persist_load_to_tmp
+	if dns_backup_file_sane "$DNS_BACKUP"; then
+		dns_restore_servers_from_backup
+	else
+		uci -q delete dhcp.@dnsmasq[0].server
+	fi
+	if [ -f "$DNS_BACKUP.noresolv" ]; then
+		nr=$(cat "$DNS_BACKUP.noresolv" 2>/dev/null)
+		if [ -n "$nr" ]; then
+			uci set dhcp.@dnsmasq[0].noresolv="$nr"
+		else
+			uci -q delete dhcp.@dnsmasq[0].noresolv
+		fi
+	else
+		uci -q delete dhcp.@dnsmasq[0].noresolv
+	fi
+	if [ -f "$DNS_LOCALUSE_BACKUP" ]; then
+		lu=$(cat "$DNS_LOCALUSE_BACKUP" 2>/dev/null)
+		if [ -n "$lu" ]; then
+			uci set dhcp.@dnsmasq[0].localuse="$lu"
+		else
+			uci -q delete dhcp.@dnsmasq[0].localuse
+		fi
+	else
+		uci -q delete dhcp.@dnsmasq[0].localuse
 	fi
 }
 
@@ -78,33 +175,59 @@ dns_desired_mark() {
 	echo aaaa
 }
 
+# Boot / start / failsafe: if UCI still has FakeIP but sing-box is not ready — fix NOW.
+# Without this, reboot leaves LAN with DNS → 127.0.0.42 and no internet until VPN is up.
+dns_heal_orphan() {
+	mkdir -p "$RVPN_RUN" 2>/dev/null || true
+	dns_persist_load_to_tmp
+	if ! dns_uci_points_to_fakeip; then
+		return 0
+	fi
+	if dns_vpn_ready; then
+		echo fakeip >"$DNS_MARK_FILE"
+		return 0
+	fi
+	log "dns heal: FakeIP orphan (sing-box not ready) — restoring upstream"
+	dns_clear_fakeip_upstream
+	# Keep filter_aaaa if zapret/vpn still intended; full restore handles "off"
+	zap=$(uci_get zapret_enabled)
+	vpn=$(uci_get vpn_enabled)
+	if [ "$zap" = "1" ] || [ "$vpn" = "1" ]; then
+		uci set dhcp.@dnsmasq[0].filter_aaaa='1'
+		uci commit dhcp
+		dns_reload
+		echo aaaa >"$DNS_MARK_FILE"
+	else
+		if [ -f "$DNS_AAAA_BACKUP" ]; then
+			aa=$(cat "$DNS_AAAA_BACKUP" 2>/dev/null)
+			if [ -n "$aa" ]; then
+				uci set dhcp.@dnsmasq[0].filter_aaaa="$aa"
+			else
+				uci -q delete dhcp.@dnsmasq[0].filter_aaaa
+			fi
+		else
+			uci -q delete dhcp.@dnsmasq[0].filter_aaaa
+		fi
+		uci commit dhcp
+		dns_reload
+		rm -f "$DNS_MARK_FILE"
+	fi
+	log "dns heal done"
+	return 0
+}
+
 dns_apply_aaaa_only() {
 	cur=$(cat "$DNS_MARK_FILE" 2>/dev/null || echo "")
-	if [ "$cur" = "aaaa" ]; then
-		# Still ensure FakeIP upstream is not lingering
-		srv=$(uci -q get dhcp.@dnsmasq[0].server 2>/dev/null || true)
-		listen=$(uci_get dns_listen)
-		[ -n "$listen" ] || listen=127.0.0.42
-		case "$srv" in
-		*"$listen"*) ;;
-		*) return 0 ;;
-		esac
+	# Always strip FakeIP if present (reboot / poisoned mark)
+	if dns_uci_points_to_fakeip; then
+		:
+	elif [ "$cur" = "aaaa" ]; then
+		return 0
 	fi
 	dns_backup_once
 	uci set dhcp.@dnsmasq[0].filter_aaaa='1'
-	if [ -f "$DNS_MARK_FILE" ] && grep -q fakeip "$DNS_MARK_FILE" 2>/dev/null; then
-		dns_restore_servers_from_backup
-		uci -q delete dhcp.@dnsmasq[0].noresolv
-		if [ -f "$DNS_LOCALUSE_BACKUP" ]; then
-			lu=$(cat "$DNS_LOCALUSE_BACKUP" 2>/dev/null)
-			if [ -n "$lu" ]; then
-				uci set dhcp.@dnsmasq[0].localuse="$lu"
-			else
-				uci -q delete dhcp.@dnsmasq[0].localuse
-			fi
-		else
-			uci -q delete dhcp.@dnsmasq[0].localuse
-		fi
+	if dns_uci_points_to_fakeip || { [ -f "$DNS_MARK_FILE" ] && grep -q fakeip "$DNS_MARK_FILE" 2>/dev/null; }; then
+		dns_clear_fakeip_upstream
 	fi
 	uci commit dhcp
 	dns_reload
@@ -127,8 +250,7 @@ dns_apply() {
 	fi
 
 	# want=fakeip
-	listen=$(uci_get dns_listen)
-	[ -n "$listen" ] || listen=127.0.0.42
+	listen=$(dns_listen_addr)
 	if [ "$cur" = "fakeip" ]; then
 		srv=$(uci -q get dhcp.@dnsmasq[0].server 2>/dev/null || true)
 		case "$srv" in
@@ -157,20 +279,15 @@ dns_flush_cache() {
 }
 
 dns_restore() {
-	[ -f "$DNS_MARK_FILE" ] || [ -f "$DNS_BACKUP" ] || [ -f "$DNS_AAAA_BACKUP" ] || \
-		[ -f "$DNS_LOCALUSE_BACKUP" ] || return 0
+	dns_persist_load_to_tmp
+	# Nothing to do if clean and no FakeIP leftover
+	if [ ! -f "$DNS_MARK_FILE" ] && [ ! -f "$DNS_BACKUP" ] && [ ! -f "$DNS_AAAA_BACKUP" ] && \
+		[ ! -f "$DNS_LOCALUSE_BACKUP" ] && ! dns_uci_points_to_fakeip; then
+		return 0
+	fi
 
-	dns_restore_servers_from_backup
-
-	if [ -f "$DNS_BACKUP.noresolv" ]; then
-		nr=$(cat "$DNS_BACKUP.noresolv" 2>/dev/null)
-		if [ -n "$nr" ]; then
-			uci set dhcp.@dnsmasq[0].noresolv="$nr"
-		else
-			uci -q delete dhcp.@dnsmasq[0].noresolv
-		fi
-	else
-		uci -q delete dhcp.@dnsmasq[0].noresolv
+	if dns_uci_points_to_fakeip || [ -f "$DNS_MARK_FILE" ] || [ -f "$DNS_BACKUP" ]; then
+		dns_clear_fakeip_upstream
 	fi
 
 	if [ -f "$DNS_AAAA_BACKUP" ]; then
@@ -181,7 +298,10 @@ dns_restore() {
 			uci -q delete dhcp.@dnsmasq[0].filter_aaaa
 		fi
 	else
-		uci -q delete dhcp.@dnsmasq[0].filter_aaaa
+		# If we were in FakeIP/aaaa without backup, drop filter_aaaa for fail-open
+		if [ -f "$DNS_MARK_FILE" ] || dns_uci_points_to_fakeip; then
+			uci -q delete dhcp.@dnsmasq[0].filter_aaaa
+		fi
 	fi
 
 	if [ -f "$DNS_LOCALUSE_BACKUP" ]; then
@@ -195,7 +315,8 @@ dns_restore() {
 
 	uci commit dhcp
 	dns_reload
-	rm -f "$DNS_MARK_FILE" "$DNS_BACKUP" "$DNS_BACKUP.noresolv" \
-		"$DNS_AAAA_BACKUP" "$DNS_LOCALUSE_BACKUP"
+	rm -f "$DNS_MARK_FILE"
+	# Keep persistent + tmp backups for next FakeIP cycle (do not delete persist)
+	rm -f "$DNS_BACKUP" "$DNS_BACKUP.noresolv" "$DNS_AAAA_BACKUP" "$DNS_LOCALUSE_BACKUP"
 	log "dns restored"
 }

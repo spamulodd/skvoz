@@ -1,5 +1,6 @@
 #!/usr/bin/awk -f
-# Extract Clash Meta proxies[] into TSV (BusyBox awk compatible).
+# Extract Clash Meta proxies[] into US-separated rows (BusyBox awk compatible).
+# Delimiter: ASCII US (\037) — NOT tab (BusyBox ash IFS collapses empty tab fields).
 # Columns:
 # tag type server port uuid password sni pbk sid flow fp network path host method
 #
@@ -61,7 +62,8 @@ function flush(   t, n) {
 	gsub(/\t/, " ", path)
 	gsub(/\t/, " ", host)
 	gsub(/\t/, " ", method)
-	print t "\t" type "\t" server "\t" port "\t" uuid "\t" password "\t" sni "\t" pbk "\t" sid "\t" flow "\t" fp "\t" network "\t" path "\t" host "\t" method
+	# US (\037) — empty fields must survive ash `read`
+	print t "\037" type "\037" server "\037" port "\037" uuid "\037" password "\037" sni "\037" pbk "\037" sid "\037" flow "\037" fp "\037" network "\037" path "\037" host "\037" method
 	reset()
 }
 

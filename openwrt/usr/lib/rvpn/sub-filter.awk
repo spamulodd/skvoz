@@ -1,9 +1,10 @@
-# Rank + keyword-skip for subscription TSV (one pass).
+# Rank + keyword-skip for subscription rows (one pass).
+# Delimiter: ASCII US (\037) — must match clash-parse.awk / sub.sh
 # Fields: tag type server port uuid password sni pbk sid flow fp network path host method
 # ENV: PREFER (comma tokens), SKIP (comma keywords), MAX (int)
 BEGIN {
-	FS = "\t"
-	OFS = "\t"
+	FS = "\037"
+	OFS = "\037"
 	prefer = ENVIRON["PREFER"]
 	if (prefer == "") prefer = "vless-reality,hysteria2,trojan,vless-ws,vless-grpc,vless,ss"
 	skip = ENVIRON["SKIP"]
@@ -52,12 +53,11 @@ function skipped(tag,   tl, i) {
 	network = $12; path = $13; host = $14; method = $15
 	r = rank_of(token_of(type, network, pbk))
 	n++
-	out[n] = sprintf("%02d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s", \
+	out[n] = sprintf("%02d\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s", \
 		r, tag, type, server, port, uuid, password, sni, pbk, sid, flow, fp, network, path, host, method)
-	key[n] = sprintf("%02d\t%s\t%s", r, type, server)
+	key[n] = sprintf("%02d\037%s\037%s", r, type, server)
 }
 END {
-	# insertion sort by key (small max≈hundreds)
 	for (i = 2; i <= n; i++) {
 		t = out[i]; k = key[i]; j = i - 1
 		while (j >= 1 && key[j] > k) {
@@ -67,8 +67,7 @@ END {
 	}
 	lim = (n < max) ? n : max
 	for (i = 1; i <= lim; i++) {
-		# drop rank column
-		sub(/^[^\t]+\t/, "", out[i])
+		sub(/^[^\037]+\037/, "", out[i])
 		print out[i]
 	}
 }

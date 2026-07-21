@@ -186,6 +186,9 @@ nfqws-fetch)
 update-check)
 	update_check_json
 	;;
+update-status)
+	update_status_json
+	;;
 update)
 	update_run || { echo FAIL; exit 1; }
 	;;

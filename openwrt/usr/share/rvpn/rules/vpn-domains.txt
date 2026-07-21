@@ -146,6 +146,7 @@ dev-c.com
 # --- Patreon ---
 patreon.com
 patreonusercontent.com
+patreoncommunity.com
 # --- Apple (Music artwork + APNs push) ---
 music.apple.com
 itunes.apple.com

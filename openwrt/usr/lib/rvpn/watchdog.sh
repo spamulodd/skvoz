@@ -11,10 +11,13 @@ watchdog_failopen() {
 	date -u +%Y-%m-%dT%H:%MZ 2>/dev/null >"$RVPN_RUN/last_failopen" || date >"$RVPN_RUN/last_failopen"
 	: >"$RVPN_RUN/wd_degraded"
 	nft_flush_vpn
+	dns_heal_orphan
 	dns_restore
 	zap=$(uci_get zapret_enabled)
 	if [ "$zap" = "1" ]; then
 		dns_apply_aaaa_only
+	elif dns_uci_points_to_fakeip; then
+		dns_heal_orphan
 	fi
 }
 

@@ -18,6 +18,8 @@ start_service() {
 	mkdir -p "$RVPN_RUN"
 	chmod 700 "$RVPN_RUN" 2>/dev/null || true
 	log "start requested"
+	# UCI FakeIP survives reboot; /tmp backups do not — heal before anything else
+	dns_heal_orphan 2>/dev/null || true
 	ensure_ui_secret >/dev/null || log "WARN: ui_secret not ready"
 	ensure_clash_secret >/dev/null || log "WARN: clash_secret not ready"
 	health_cron_install 2>/dev/null || true
@@ -28,11 +30,20 @@ start_service() {
 	vpn_ok=0
 
 	if [ "$zap" != "1" ] && [ "$vpn" != "1" ]; then
-		log "both layers off"
-		echo stopped >"$RVPN_STATE"
+		log "both layers off — fail-open cleanup"
 		watchdog_stop
-		# Adblock is independent of vpn/zapret
+		nft_flush_zapret
+		nft_flush_vpn
+		nft_flush_quic
+		nft_flush_doh
+		ip rule del fwmark 0x1 lookup 100 2>/dev/null || true
+		ip route flush table 100 2>/dev/null || true
+		zapret_stop
+		sb_kill_ours
+		rm -f "$RVPN_RUN/sing-box.pid" "$RVPN_RUN/nfqws.pid" 2>/dev/null || true
+		dns_restore
 		adblock_apply 2>/dev/null || true
+		echo stopped >"$RVPN_STATE"
 		return 0
 	fi
 
@@ -64,6 +75,11 @@ start_service() {
 		log "CRITICAL: WAN broke — cleanup"
 		stop_service
 		return 1
+	fi
+	# DNS self-check: FakeIP must not be orphan after start
+	if dns_uci_points_to_fakeip && ! dns_vpn_ready; then
+		log "CRITICAL: FakeIP orphan after start — heal"
+		dns_heal_orphan
 	fi
 	echo running >"$RVPN_STATE"
 	if [ "$vpn_ok" = "1" ]; then

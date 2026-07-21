@@ -103,6 +103,7 @@ zapret_start() {
 	# Stay root: nobody cannot read RVPN_RUN(700) or write pid under /var/run
 	set -- --daemon --pidfile="$ZAP_PID" --qnum="$qnum" --uid=0
 	while IFS= read -r a || [ -n "$a" ]; do
+		a=$(printf '%s' "$a" | tr -d '\r')
 		[ -n "$a" ] || continue
 		set -- "$@" "$a"
 	done <"$ZAP_STRAT_ARGS"

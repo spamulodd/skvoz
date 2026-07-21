@@ -196,6 +196,14 @@ EOF
 	[ "$ok" = "1" ]
 }
 
+ui_dns_orphan() {
+	# shellcheck source=/dev/null
+	. /usr/lib/rvpn/dns.sh
+	dns_uci_points_to_fakeip || return 1
+	dns_vpn_ready && return 1
+	return 0
+}
+
 ui_health_detail_json() {
 	dns_mode=$(cat "$RVPN_RUN/dns.applied" 2>/dev/null || echo off)
 	dns_j=$(json_escape "$dns_mode")
@@ -224,8 +232,50 @@ ui_health_detail_json() {
 		echo "$dns_mode" | grep -q fakeip || degraded=1
 		[ "$nft_vpn" = "1" ] || degraded=1
 	fi
-	printf '{"ok":1,"singbox":%s,"nfqws":%s,"dns_mode":"%s","nft_vpn":%s,"nft_zapret":%s,"watchdog":%s,"last_failopen":"%s","degraded":%s}\n' \
-		"$sb" "$nfq" "$dns_j" "$nft_vpn" "$nft_zap" "$wd" "$fo_j" "$degraded"
+	dns_orphan=0
+	ui_dns_orphan && dns_orphan=1
+	[ "$dns_orphan" = "1" ] && degraded=1
+	printf '{"ok":1,"singbox":%s,"nfqws":%s,"dns_mode":"%s","nft_vpn":%s,"nft_zapret":%s,"watchdog":%s,"last_failopen":"%s","degraded":%s,"dns_orphan":%s}\n' \
+		"$sb" "$nfq" "$dns_j" "$nft_vpn" "$nft_zap" "$wd" "$fo_j" "$degraded" "$dns_orphan"
+}
+
+# Emergency: restore DNS/nft, stop engines. mode=soft keeps layer toggles; hard turns VPN+zapret off.
+ui_failsafe_run() {
+	mode=${1:-hard}
+	# shellcheck source=/dev/null
+	. /usr/lib/rvpn/dns.sh
+	# shellcheck source=/dev/null
+	. /usr/lib/rvpn/nft.sh
+	# shellcheck source=/dev/null
+	. /usr/lib/rvpn/singbox.sh
+	# shellcheck source=/dev/null
+	. /usr/lib/rvpn/zapret.sh
+	# shellcheck source=/dev/null
+	. /usr/lib/rvpn/watchdog.sh
+
+	log "FAILSAFE mode=$mode"
+	watchdog_stop 2>/dev/null || true
+	nft_flush_zapret 2>/dev/null || true
+	nft_flush_vpn 2>/dev/null || true
+	nft_flush_quic 2>/dev/null || true
+	nft_flush_doh 2>/dev/null || true
+	ip rule del fwmark 0x1 lookup 100 2>/dev/null || true
+	ip route flush table 100 2>/dev/null || true
+	zapret_stop 2>/dev/null || true
+	sb_kill_ours 2>/dev/null || true
+	rm -f "$RVPN_RUN/sing-box.pid" "$RVPN_RUN/nfqws.pid" 2>/dev/null || true
+	dns_heal_orphan 2>/dev/null || true
+	dns_restore 2>/dev/null || true
+	if [ "$mode" = "hard" ]; then
+		uci set rvpn.main.vpn_enabled='0'
+		uci set rvpn.main.zapret_enabled='0'
+		uci commit rvpn
+	fi
+	echo stopped >"$RVPN_STATE"
+	date -u +%Y-%m-%dT%H:%MZ 2>/dev/null >"$RVPN_RUN/last_failopen" || date >"$RVPN_RUN/last_failopen"
+	log "FAILSAFE done — internet should work via ISP DNS"
+	printf '{"ok":1,"mode":"%s","vpn_enabled":%s,"zapret_enabled":%s,"msg":"failsafe_done"}\n' \
+		"$mode" "$(uci_get vpn_enabled)" "$(uci_get zapret_enabled)"
 }
 
 ui_json_string_array_from_file() {
@@ -314,6 +364,13 @@ ui_domains_text() {
 ui_domains_set() {
 	layer=$1
 	text=$2
+	# Shipped base lists are read-only in UI — edit user overlays instead
+	case "$layer" in
+	vpn-shipped|vpn_shipped|dpi-shipped|zapret-shipped|dpi_shipped|games-shipped|games_shipped)
+		printf '{"ok":0,"error":"shipped_readonly","hint":"use vpn / dpi / games user lists"}\n'
+		return 1
+		;;
+	esac
 	f=$(ui_domains_file_for_layer "$layer") || return 1
 	mkdir -p "$(dirname "$f")" "$RVPN_RUN"
 	tmp=$RVPN_RUN/domains-set.$$
@@ -374,14 +431,17 @@ ui_vps_json() {
 	[ -n "$sni" ] || sni=bing.com
 	[ -n "$type" ] || type=hysteria2
 	[ -n "$tag" ] || tag=vps-fi-hy2
-	printf '{"ok":1,"configured":%s,"enabled":%s,"vpn_enabled":%s,"tag":"%s","type":"%s","server":"%s","port":"%s","password":"%s","sni":"%s","insecure":%s}\n' \
+	pw_set=0
+	[ -n "$password" ] && pw_set=1
+	# Never return plaintext password to the browser
+	printf '{"ok":1,"configured":%s,"enabled":%s,"vpn_enabled":%s,"tag":"%s","type":"%s","server":"%s","port":"%s","password_set":%s,"sni":"%s","insecure":%s}\n' \
 		"$([ -n "$server" ] && echo 1 || echo 0)" \
 		"$en" "$vpn" \
 		"$(json_escape "$tag")" \
 		"$(json_escape "$type")" \
 		"$(json_escape "$server")" \
 		"$(json_escape "$port")" \
-		"$(json_escape "$password")" \
+		"$pw_set" \
 		"$(json_escape "$sni")" \
 		"$insecure"
 }

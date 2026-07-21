@@ -6,6 +6,8 @@
 RVPN_SUB_DIR=$RVPN_RUN/sub
 CLASH_AWK=/usr/lib/rvpn/clash-parse.awk
 SUB_FILTER_AWK=/usr/lib/rvpn/sub-filter.awk
+# ASCII Unit Separator — tab cannot carry empty fields through BusyBox ash `read`
+SUB_FS=$(printf '\037')
 
 sub_list_ids() {
 	uci -q show rvpn | sed -n 's/^rvpn\.\([^=]*\)=subscription$/\1/p'
@@ -121,7 +123,7 @@ sub_parse_uri_file() {
 			ins=$(echo "$q" | tr '&' '\n' | sed -n 's/^insecure=//p' | head -1)
 			tag=$(printf '%s' "$frag" | sed 's/[^A-Za-z0-9._-]/-/g' | cut -c1-40)
 			[ -n "$tag" ] || tag="hy2-$server-$port"
-			printf '%s\thysteria2\t%s\t%s\t\t%s\t%s\t\t\t\t\ttcp\t\t\t\n' \
+			printf '%s\037hysteria2\037%s\037%s\037\037%s\037%s\037\037\037\037\037tcp\037\037\037\n' \
 				"$tag" "$server" "$port" "$user" "$sni" >>"$outfile"
 			;;
 		vless)
@@ -145,7 +147,7 @@ sub_parse_uri_file() {
 			host=$(echo "$q" | tr '&' '\n' | sed -n 's/^host=//p' | head -1)
 			tag=$(printf '%s' "$frag" | sed 's/[^A-Za-z0-9._-]/-/g' | cut -c1-40)
 			[ -n "$tag" ] || tag="vless-$server-$port"
-			printf '%s\tvless\t%s\t%s\t%s\t\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n' \
+			printf '%s\037vless\037%s\037%s\037%s\037\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037\n' \
 				"$tag" "$server" "$port" "$user" "$sni" "$pbk" "$sid" "$flow" "$fp" "$net" "$path" "$host" >>"$outfile"
 			;;
 		trojan)
@@ -165,7 +167,7 @@ sub_parse_uri_file() {
 			host=$(echo "$q" | tr '&' '\n' | sed -n 's/^host=//p' | head -1)
 			tag=$(printf '%s' "$frag" | sed 's/[^A-Za-z0-9._-]/-/g' | cut -c1-40)
 			[ -n "$tag" ] || tag="trojan-$server-$port"
-			printf '%s\ttrojan\t%s\t%s\t\t%s\t%s\t\t\t\t%s\t%s\t%s\t%s\t\n' \
+			printf '%s\037trojan\037%s\037%s\037\037%s\037%s\037\037\037\037%s\037%s\037%s\037%s\037\n' \
 				"$tag" "$server" "$port" "$user" "$sni" "$fp" "$net" "$path" "$host" >>"$outfile"
 			;;
 		ss)
@@ -186,7 +188,7 @@ sub_parse_uri_file() {
 			password=${decoded#*:}
 			tag=$(printf '%s' "$frag" | sed 's/[^A-Za-z0-9._-]/-/g' | cut -c1-40)
 			[ -n "$tag" ] || tag="ss-$server-$port"
-			printf '%s\tss\t%s\t%s\t\t%s\t\t\t\t\t\ttcp\t\t\t%s\n' \
+			printf '%s\037ss\037%s\037%s\037\037%s\037\037\037\037\037\037tcp\037\037\037%s\n' \
 				"$tag" "$server" "$port" "$password" "$method" >>"$outfile"
 			;;
 		esac
@@ -278,7 +280,7 @@ sub_filter_tsv() {
 
 	# Fallback: shell loop (no awk helper)
 	: >"$outfile.ranked"
-	while IFS="$(printf '\t')" read -r tag type server port uuid password sni pbk sid_r flow fp network path host method; do
+	while IFS="$SUB_FS" read -r tag type server port uuid password sni pbk sid_r flow fp network path host method; do
 		[ -n "$tag" ] || continue
 		bad=0
 		oldifs=$IFS
@@ -291,12 +293,12 @@ sub_filter_tsv() {
 		IFS=$oldifs
 		[ "$bad" = 1 ] && continue
 		rank=$(sub_node_rank "$type" "$network" "$pbk" "$prefer")
-		printf '%02d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+		printf '%02d\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\n' \
 			"$rank" "$tag" "$type" "$server" "$port" "$uuid" "$password" "$sni" "$pbk" "$sid_r" "$flow" "$fp" "$network" "$path" "$host" "$method" \
 			>>"$outfile.ranked"
 	done <"$infile"
 
-	sort -t "$(printf '\t')" -k1,1n -k3,3 -k4,4 "$outfile.ranked" | head -n "$max" | cut -f2- >"$outfile"
+	sort -t "$SUB_FS" -k1,1n -k3,3 -k4,4 "$outfile.ranked" | head -n "$max" | cut -d "$SUB_FS" -f2- >"$outfile"
 	rm -f "$outfile.ranked"
 	[ -s "$outfile" ]
 }
@@ -326,7 +328,7 @@ sub_uci_import_tsv() {
 	src="sub:$sid"
 	sub_uci_clear_source "$sid"
 	n=0
-	while IFS="$(printf '\t')" read -r tag type server port uuid password sni pbk sid_r flow fp network path host method; do
+	while IFS="$SUB_FS" read -r tag type server port uuid password sni pbk sid_r flow fp network path host method; do
 		[ -n "$tag" ] || continue
 		case "$type" in
 		hy2) type=hysteria2 ;;

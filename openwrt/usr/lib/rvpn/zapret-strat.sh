@@ -84,6 +84,7 @@ zapret_strat_resolve_args() {
 
 	: >"$ZAP_STRAT_ARGS"
 	while IFS= read -r line || [ -n "$line" ]; do
+		line=$(printf '%s' "$line" | tr -d '\r')
 		case "$line" in
 		''|\#*) continue ;;
 		esac
@@ -93,12 +94,13 @@ zapret_strat_resolve_args() {
 		esac
 		arg=$line
 		case "$arg" in
-		--hostlist=HOSTLIST)
+		--hostlist=HOSTLIST|--hostlist=\"HOSTLIST\")
 			arg="--hostlist=$hl"
 			;;
 		*=FAKE:*)
 			key=${arg%%=FAKE:*}
 			bin=${arg#*=FAKE:}
+			bin=$(printf '%s' "$bin" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 			path="$fake_dir/$bin"
 			if [ ! -f "$path" ]; then
 				log "WARN: fake missing $bin — skip arg"

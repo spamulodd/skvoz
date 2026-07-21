@@ -155,11 +155,42 @@ sb_generate() {
 			sid=$(sb_uci_get "$id" reality_short_id)
 			flow=$(sb_uci_get "$id" flow)
 			fp=$(sb_uci_get "$id" fingerprint)
-			[ -n "$fp" ] || fp=chrome
 			network=$(sb_uci_get "$id" network)
 			[ -n "$network" ] || network=tcp
 			path=$(sb_uci_get "$id" path)
 			host=$(sb_uci_get "$id" host)
+			# Heal fields scrambled by old tab-TSV import (ash collapsed empty password)
+			case "$fp" in
+			tcp|ws|grpc|http|h2|quic)
+				network=$fp
+				fp=
+				;;
+			esac
+			case "$flow" in
+			chrome|firefox|safari|ios|android|edge|360|qq|random)
+				[ -n "$fp" ] || fp=$flow
+				flow=
+				;;
+			esac
+			case "$sid" in
+			xtls-rprx-vision|xtls-rprx-vision-udp443)
+				[ -n "$flow" ] || flow=$sid
+				sid=
+				;;
+			esac
+			# Reality public_key is ~43-char base64; short hex means corrupt import — skip
+			if [ -n "$pbk" ] && [ "${#pbk}" -lt 20 ]; then
+				log "WARN: skip node $id — corrupt reality key (re-fetch subscription)"
+				continue
+			fi
+			case "$fp" in
+			chrome|firefox|safari|ios|android|edge|360|qq|random|"") ;;
+			*)
+				log "WARN: node $id bad fingerprint '$fp' → chrome"
+				fp=chrome
+				;;
+			esac
+			[ -n "$fp" ] || fp=chrome
 			uuid_j=$(json_escape "$uuid")
 			sni_j=$(json_escape "$sni")
 			fp_j=$(json_escape "$fp")
@@ -197,11 +228,21 @@ sb_generate() {
 			sni=$(sb_uci_get "$id" sni)
 			[ -n "$sni" ] || sni="$server"
 			fp=$(sb_uci_get "$id" fingerprint)
-			[ -n "$fp" ] || fp=chrome
 			network=$(sb_uci_get "$id" network)
 			[ -n "$network" ] || network=tcp
 			path=$(sb_uci_get "$id" path)
 			host=$(sb_uci_get "$id" host)
+			case "$fp" in
+			tcp|ws|grpc|http|h2|quic)
+				network=$fp
+				fp=
+				;;
+			esac
+			case "$fp" in
+			chrome|firefox|safari|ios|android|edge|360|qq|random|"") ;;
+			*) fp=chrome ;;
+			esac
+			[ -n "$fp" ] || fp=chrome
 			pw_j=$(json_escape "$pw")
 			sni_j=$(json_escape "$sni")
 			fp_j=$(json_escape "$fp")

@@ -17,6 +17,26 @@ urldecode() {
 	printf '%b' "$(printf '%s' "$1" | sed 's/+/ /g;s/%\([0-9A-Fa-f][0-9A-Fa-f]\)/\\x\1/g')"
 }
 
+# Read POST body (uhttpd → CGI stdin). Caps at 512KiB.
+cgi_read_body() {
+	case "${REQUEST_METHOD:-GET}" in
+	POST|PUT) ;;
+	*) echo ""; return 0 ;;
+	esac
+	n=${CONTENT_LENGTH:-0}
+	case "$n" in ''|*[!0-9]*) n=0 ;; esac
+	[ "$n" -gt 0 ] || { echo ""; return 0; }
+	[ "$n" -le 524288 ] || n=524288
+	dd bs=1 count="$n" 2>/dev/null
+}
+
+# Parse application/x-www-form-urlencoded body for key=
+cgi_form_get() {
+	body=$1
+	key=$2
+	printf '%s' "$body" | tr '&' '\n' | sed -n "s/^${key}=//p" | head -1
+}
+
 json_hdr() {
 	echo "Content-Type: application/json; charset=utf-8"
 	echo "Cache-Control: no-store"
@@ -36,14 +56,14 @@ require_auth() {
 		echo '{"error":"no_ui_secret"}'
 		exit 0
 	}
-	# Query token is primary: OpenWrt uhttpd often does not expose custom headers to CGI.
-	# Cookie / X-Skvoz-Token are optional extras when the frontend can set them.
-	got=$(get_arg token)
-	if [ -z "$got" ] && [ -n "$HTTP_COOKIE" ]; then
+	# Prefer cookie (not logged in Referer/query). Query token kept as fallback for curl/CLI.
+	got=
+	if [ -n "$HTTP_COOKIE" ]; then
 		got=$(echo "$HTTP_COOKIE" | tr ';' '\n' | sed -n 's/^[[:space:]]*skvoz_token=//p' | head -1)
+		got=$(urldecode "$got")
 	fi
+	[ -z "$got" ] && got=$(get_arg token)
 	[ -z "$got" ] && got=$HTTP_X_SKVOZ_TOKEN
-	# strip CR/whitespace from cookie/header
 	got=$(printf '%s' "$got" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 	if [ -z "$got" ] || [ "$got" != "$want" ]; then
 		echo "Status: 401 Unauthorized"
@@ -147,11 +167,29 @@ stop)
 	text_hdr
 	echo OK
 	;;
+start)
+	require_auth
+	svc_async start
+	text_hdr
+	echo OK
+	;;
 restart)
 	require_auth
 	svc_async restart
 	text_hdr
 	echo OK
+	;;
+failsafe)
+	require_auth
+	json_hdr
+	mode=$(get_arg mode)
+	[ -n "$mode" ] || mode=hard
+	case "$mode" in soft|hard) ;; *) mode=hard ;; esac
+	# Sync — user needs internet restored before the HTTP response returns
+	rvpn_with_lock /bin/sh -c "
+		. /usr/lib/rvpn/ui-api.sh
+		ui_failsafe_run '$mode'
+	" 2>>"$RVPN_LOG"
 	;;
 log)
 	require_auth
@@ -201,6 +239,31 @@ domains-set)
 	layer=$(get_arg layer)
 	[ -n "$layer" ] || layer=vpn
 	text=$(urldecode "$(get_arg text)")
+	# Prefer POST body for large lists (avoids URL length limits / token+text in query)
+	if [ "${REQUEST_METHOD:-GET}" = "POST" ]; then
+		body=$(cgi_read_body)
+		ct=$(printf '%s' "${CONTENT_TYPE:-}" | tr 'A-Z' 'a-z')
+		case "$ct" in
+		*json*)
+			# {"layer":"...","text":"..."} — minimal extract
+			t2=$(printf '%s' "$body" | sed -n 's/.*"text"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+			l2=$(printf '%s' "$body" | sed -n 's/.*"layer"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+			[ -n "$l2" ] && layer=$l2
+			[ -n "$t2" ] && text=$(printf '%s' "$t2" | sed 's/\\n/\n/g')
+			;;
+		*)
+			# form-urlencoded or raw body = list text
+			ft=$(cgi_form_get "$body" text)
+			fl=$(cgi_form_get "$body" layer)
+			if [ -n "$ft" ] || [ -n "$fl" ]; then
+				[ -n "$fl" ] && layer=$(urldecode "$fl")
+				[ -n "$ft" ] && text=$(urldecode "$ft")
+			else
+				text=$body
+			fi
+			;;
+		esac
+	fi
 	json_hdr
 	ui_domains_set "$layer" "$text" || echo '{"error":"bad_list"}'
 	;;
@@ -505,11 +568,21 @@ update-check)
 	;;
 update)
 	require_auth
+	# shellcheck source=/dev/null
+	. /usr/lib/rvpn/update.sh
+	update_status_set running "queued"
 	(
 		rvpn_with_lock /bin/sh -c '. /usr/lib/rvpn/update.sh; update_run' >>"$RVPN_LOG" 2>&1
 	) &
 	json_hdr
 	echo '{"ok":1,"async":1}'
+	;;
+update-status)
+	require_auth
+	json_hdr
+	# shellcheck source=/dev/null
+	. /usr/lib/rvpn/update.sh
+	update_status_json
 	;;
 nfqws-fetch)
 	require_auth
@@ -534,7 +607,15 @@ vps-set)
 	insecure=$(get_arg insecure)
 	[ -n "$sni" ] || sni=bing.com
 	case "$port" in ''|*[!0-9]*) port=433 ;; esac
-	if [ -z "$server" ] || [ -z "$password" ]; then
+	if [ -z "$server" ]; then
+		echo '{"error":"need_server"}'
+		exit 0
+	fi
+	# Empty password = keep existing (UI no longer echoes secrets)
+	if [ -z "$password" ]; then
+		password=$(uci -q get rvpn.vps_hy2.password)
+	fi
+	if [ -z "$password" ]; then
 		echo '{"error":"need_server_password"}'
 		exit 0
 	fi

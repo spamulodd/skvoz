@@ -231,6 +231,14 @@ textarea { resize: vertical; min-height: 8rem; }
       <!-- Status Tab -->
       <div id="tab-status" class="panel">
         <h2>Текущий статус</h2>
+        <div id="dash-failsafe-banner" class="hidden" style="background:#3b1111;color:#fecaca;padding:0.85rem 1rem;border-radius:0.5rem;margin-bottom:1rem;border:1px solid #7f1d1d;">
+          <strong>Интернет под угрозой.</strong>
+          <span id="dash-failsafe-msg"> DNS/VPN в аварийном состоянии.</span>
+          <div class="flex" style="margin-top:0.75rem;flex-wrap:wrap;">
+            <button onclick="doFailsafe('soft')" class="outline" style="color:#fecaca;border-color:#f87171;">Сбросить DNS/nft</button>
+            <button onclick="doFailsafe('hard')" style="background:#b91c1c;border-color:#b91c1c;">Выключить VPN+Zapret</button>
+          </div>
+        </div>
         <div class="flex-col" id="dash-status" style="margin-bottom: 2rem;">Загрузка...</div>
         <h3>Управление слоями</h3>
         <div class="flex" style="flex-wrap: wrap;">
@@ -297,7 +305,7 @@ textarea { resize: vertical; min-height: 8rem; }
             <option value="allow">Adblock allow</option>
           </select>
           <button onclick="loadListEditor()" class="outline">Загрузить</button>
-          <button onclick="saveListEditor()">Сохранить список</button>
+          <button id="edit_domain_save" onclick="saveListEditor()">Сохранить список</button>
         </div>
         <textarea id="edit_domain_text" rows="12" placeholder="по одному домену на строку" style="width:100%; font-family: ui-monospace, monospace; font-size: 0.85rem; margin-bottom: 1.5rem;"></textarea>
         <div id="dash-list-chips" class="chips" style="margin-bottom: 2rem;"></div>
@@ -327,7 +335,12 @@ textarea { resize: vertical; min-height: 8rem; }
       <!-- Tests Tab -->
       <div id="tab-tests" class="panel hidden">
         <h2>Диагностика системы (Селфтест)</h2>
-        <button onclick="runSelftest('dash-selftest-res')" style="margin-bottom: 1.5rem;">Запустить тест</button>
+        <p style="color:var(--text-muted);margin-bottom:1rem;">Проверяет WAN, DNS orphan, резолв через роутер и слои. При сбое DNS — кнопка аварийного сброса на вкладке «Система».</p>
+        <div class="flex" style="flex-wrap:wrap;margin-bottom:1.5rem;">
+          <button onclick="runSelftest('dash-selftest-res')">Запустить тест</button>
+          <button onclick="doFailsafe('soft')" class="outline">Сбросить DNS/nft</button>
+          <button onclick="doFailsafe('hard')" class="outline" style="color:var(--error);border-color:var(--error);">Выключить VPN+Zapret</button>
+        </div>
         <pre id="dash-selftest-res" class="log-box" style="height: 350px; display:none;"></pre>
       </div>
       <!-- Wi-Fi Tab -->
@@ -343,8 +356,10 @@ textarea { resize: vertical; min-height: 8rem; }
           <button onclick="checkUpdate()">Проверить обновления</button>
           <button onclick="doUpdate()" class="outline">Обновить прошивку</button>
           <button onclick="getLog()" class="outline">Логи сервиса</button>
+          <button onclick="sysCmd('start')">Включить сервис</button>
           <button onclick="sysCmd('restart')" class="outline">Перезапуск</button>
           <button onclick="sysCmd('stop')" class="outline" style="color:var(--error); border-color:var(--error);">Остановить сервис</button>
+          <button onclick="doFailsafe('hard')" class="outline" style="color:var(--error); border-color:var(--error);">Аварийный сброс</button>
         </div>
         <pre id="sys-log-res" class="log-box" style="height: 350px; display:none;"></pre>
       </div>
@@ -381,19 +396,24 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-async function api(cmd, params={}) {
+async function api(cmd, params={}, opts={}) {
   // CGI: first query token is the action (status|setup|set&layer=…), not cmd=
-  // Always put auth in query — OpenWrt uhttpd does not pass X-Skvoz-Token to CGI.
+  // Auth via cookie (HTTP_COOKIE) — avoid token in query/logs/Referer. Header as extra.
   let url = API + '?' + cmd;
+  const method = (opts.method || 'GET').toUpperCase();
+  const body = opts.body;
   for (let k in params) {
     if (params[k] !== undefined && params[k] !== null && params[k] !== '') {
       url += '&' + k + '=' + encodeURIComponent(params[k]);
     }
   }
   const t = getToken();
-  if (t) url += '&token=' + encodeURIComponent(t);
-  const hdrs = t ? { 'X-Skvoz-Token': t } : {};
-  const res = await fetch(url, { cache: 'no-store', credentials: 'same-origin', headers: hdrs });
+  const hdrs = {};
+  if (t) hdrs['X-Skvoz-Token'] = t;
+  if (opts.contentType) hdrs['Content-Type'] = opts.contentType;
+  const fetchOpts = { method, cache: 'no-store', credentials: 'same-origin', headers: hdrs };
+  if (body != null) fetchOpts.body = body;
+  const res = await fetch(url, fetchOpts);
   if (res.status === 401 || res.status === 403) {
     setToken('');
     document.getElementById('gate').style.display = 'flex';
@@ -403,12 +423,12 @@ async function api(cmd, params={}) {
   if (!res.ok) throw new Error('API Error: ' + res.status);
   return res;
 }
-async function apiJson(cmd, params={}) {
-  const res = await api(cmd, params);
+async function apiJson(cmd, params={}, opts={}) {
+  const res = await api(cmd, params, opts);
   try { return await res.json(); } catch(e) { return {}; }
 }
-async function apiText(cmd, params={}) {
-  const res = await api(cmd, params);
+async function apiText(cmd, params={}, opts={}) {
+  const res = await api(cmd, params, opts);
   return res.text();
 }
 
@@ -556,7 +576,8 @@ async function saveVps() {
     sni: document.getElementById('vps_sni').value || 'bing.com',
     insecure: '1'
   };
-  if(!params.server || !params.port || !params.password) return showToast('Заполните сервер, порт и пароль');
+  if(!params.server || !params.port) return showToast('Заполните сервер и порт');
+  if(!params.password) return showToast('Введите пароль VPS');
   try {
     await apiJson('vps-set', params);
     showToast('VPS сохранён, VPN включается…');
@@ -568,7 +589,9 @@ async function loadDashVps() {
     if (!j || !j.ok) return;
     document.getElementById('dash_vps_server').value = j.server || '';
     document.getElementById('dash_vps_port').value = j.port || '433';
-    document.getElementById('dash_vps_password').value = j.password || '';
+    const pw = document.getElementById('dash_vps_password');
+    pw.value = '';
+    pw.placeholder = (j.password_set == 1) ? '(сохранён — введите новый чтобы сменить)' : 'пароль';
     document.getElementById('dash_vps_sni').value = j.sni || 'bing.com';
     const st = document.getElementById('dash-vps-status');
     if (st) {
@@ -586,9 +609,10 @@ async function saveDashVps() {
     sni: document.getElementById('dash_vps_sni').value.trim() || 'bing.com',
     insecure: '1'
   };
-  if (!params.server || !params.password) return showToast('Заполните сервер и пароль');
+  if (!params.server) return showToast('Заполните сервер');
   try {
-    await apiJson('vps-set', params);
+    const j = await apiJson('vps-set', params);
+    if (j && j.error) return showToast('Ошибка: ' + j.error);
     showToast('VPS сохранён и VPN включён');
     setTimeout(loadDashVps, 1500);
     setTimeout(refreshDashStatus, 8000);
@@ -615,11 +639,17 @@ async function refreshDashSub() {
 }
 async function loadListEditor() {
   const layer = document.getElementById('edit_domain_list').value;
+  const saveBtn = document.getElementById('edit_domain_save');
+  const shipped = /shipped/.test(layer);
+  if (saveBtn) {
+    saveBtn.disabled = shipped;
+    saveBtn.title = shipped ? 'Базовые списки только для чтения — правьте пользовательские' : '';
+  }
   try {
     const j = await apiJson('domains-text', { layer });
     const ta = document.getElementById('edit_domain_text');
     ta.value = (j && j.text) ? j.text.replace(/\\n/g, '\n') : '';
-    // chips + delete
+    ta.readOnly = shipped;
     const chips = document.getElementById('dash-list-chips');
     const lines = ta.value.split(/\n/).map(s => s.trim()).filter(Boolean);
     chips.innerHTML = lines.map(d =>
@@ -629,10 +659,16 @@ async function loadListEditor() {
 }
 async function saveListEditor() {
   const layer = document.getElementById('edit_domain_list').value;
+  if (/shipped/.test(layer)) return showToast('Базовый список только для чтения');
   const text = document.getElementById('edit_domain_text').value;
   try {
-    const j = await apiJson('domains-set', { layer, text });
-    if (j && j.error) return showToast('Ошибка: ' + j.error);
+    const body = 'layer=' + encodeURIComponent(layer) + '&text=' + encodeURIComponent(text);
+    const j = await apiJson('domains-set', {}, {
+      method: 'POST',
+      contentType: 'application/x-www-form-urlencoded',
+      body
+    });
+    if (j && (j.error || j.ok === 0)) return showToast('Ошибка: ' + (j.error || 'save'));
     showToast('Список сохранён (' + (j.count != null ? j.count : '?') + ')');
     loadListEditor();
   } catch (e) { showToast('Ошибка сохранения списка'); }
@@ -729,8 +765,36 @@ async function runSelftest(elId) {
   const el = document.getElementById(elId);
   el.style.display = 'block';
   el.innerText = 'Тестирование запущено...';
-  try { el.innerText = await apiText('selftest') || 'Тест завершен без вывода.'; }
-  catch (e) { el.innerText = 'Ошибка запуска селфтеста.'; }
+  try {
+    const raw = await apiText('selftest') || '';
+    el.innerText = raw || 'Тест завершен без вывода.';
+    try {
+      const j = JSON.parse(raw);
+      if (j && j.failsafe_hint == 1) {
+        const ban = document.getElementById('dash-failsafe-banner');
+        if (ban) {
+          ban.classList.remove('hidden');
+          const msg = document.getElementById('dash-failsafe-msg');
+          if (msg) msg.textContent = ' Селфтест рекомендует аварийный сброс.';
+        }
+        showToast('Проблема с DNS/слоями — доступен аварийный сброс');
+      }
+    } catch (_) {}
+  } catch (e) { el.innerText = 'Ошибка запуска селфтеста.'; }
+}
+
+async function doFailsafe(mode) {
+  const m = mode || 'hard';
+  const label = m === 'soft'
+    ? 'Сбросить DNS и nft (слои оставить)?'
+    : 'Выключить VPN+Zapret и восстановить DNS? Интернет должен заработать без обхода.';
+  if (!confirm(label)) return;
+  showToast('Аварийный сброс...');
+  try {
+    const j = await apiJson('failsafe', { mode: m });
+    showToast(j && j.ok ? 'Сброс выполнен — проверьте интернет' : 'Сброс завершён с ошибкой');
+    try { await refreshDashStatus(); } catch (_) {}
+  } catch (e) { showToast('Ошибка аварийного сброса'); }
 }
 
 // Wi-Fi
@@ -816,8 +880,24 @@ async function refreshDashStatus() {
     html += `<div style="padding: 0.5rem 0; border-bottom: 1px solid var(--border);"><strong>Версия Skvoz:</strong> ${ver}${build ? ' <span style="color:var(--text-muted)">(' + build + ')</span>' : ''}</div>`;
     html += `<div style="padding: 0.5rem 0; border-bottom: 1px solid var(--border);"><strong>Аптайм роутера:</strong> ${up}</div>`;
     html += `<div style="padding: 0.5rem 0; border-bottom: 1px solid var(--border);"><strong>Активный узел VPN:</strong> ${node} <span style="color:var(--text-muted)">(${delay})</span></div>`;
-    html += `<div style="padding: 0.5rem 0;"><strong>Рантайм:</strong> VPN ${st.vpn_running == 1 ? 'ok' : '—'} · zapret ${st.zapret_running == 1 ? 'ok' : '—'} · DNS ${st.dns_mode || '—'}</div>`;
+    html += `<div style="padding: 0.5rem 0;"><strong>Рантайм:</strong> VPN ${st.vpn_running == 1 ? 'ok' : '—'} · zapret ${st.zapret_running == 1 ? 'ok' : '—'} · DNS ${st.dns_mode || '—'}${st.dns_orphan == 1 ? ' · <span style="color:var(--error)">ORPHAN</span>' : ''}${st.degraded == 1 ? ' · degraded' : ''}</div>`;
     document.getElementById('dash-status').innerHTML = html;
+
+    const ban = document.getElementById('dash-failsafe-banner');
+    if (ban) {
+      const bad = (st.dns_orphan == 1) || (st.degraded == 1 && st.vpn_running != 1 && st.dns_mode === 'fakeip');
+      if (bad) {
+        ban.classList.remove('hidden');
+        const msg = document.getElementById('dash-failsafe-msg');
+        if (msg) {
+          msg.textContent = st.dns_orphan == 1
+            ? ' FakeIP DNS без sing-box — после перезагрузки интернет «умирает». Нажмите сброс.'
+            : ' Слои в degraded-состоянии.';
+        }
+      } else {
+        ban.classList.add('hidden');
+      }
+    }
 
     updateToggleBtn(document.getElementById('btn-layer-vpn'), 'VPN', vpnOn);
     updateToggleBtn(document.getElementById('btn-layer-zapret'), 'Zapret', zapOn);
@@ -962,9 +1042,24 @@ async function doUpdate() {
   showToast('Запуск обновления. Не отключайте питание…');
   try {
     const j = await apiJson('update');
-    if (j && j.error) showToast('Ошибка: ' + j.error);
-    else showToast('Обновление запущено — через ~1 мин обновите страницу');
-    setTimeout(refreshDashStatus, 15000);
+    if (j && j.error) { showToast('Ошибка: ' + j.error); return; }
+    for (let i = 0; i < 40; i++) {
+      await new Promise(r => setTimeout(r, 3000));
+      let st;
+      try { st = await apiJson('update-status'); } catch (e) { continue; }
+      if (!st) continue;
+      if (st.state === 'ok') {
+        showToast('Обновление готово: ' + (st.version || st.message || 'ok'));
+        setTimeout(refreshDashStatus, 1000);
+        return;
+      }
+      if (st.state === 'error') {
+        showToast('Ошибка обновления: ' + (st.message || 'error'));
+        return;
+      }
+      if (st.message) showToast('Обновление: ' + st.message);
+    }
+    showToast('Обновление ещё идёт — обновите страницу позже');
   } catch (e) { showToast('Ошибка при обновлении'); }
 }
 async function getLog() {
@@ -975,15 +1070,20 @@ async function getLog() {
   catch (e) { el.innerText = 'Ошибка чтения логов'; }
 }
 async function sysCmd(cmd) {
-  try { 
-    await apiText(cmd); 
-    showToast(`Команда ${cmd} выполнена`); 
+  const labels = { start: 'Включение', stop: 'Остановка', restart: 'Перезапуск' };
+  showToast((labels[cmd] || cmd) + '...');
+  try {
+    await apiText(cmd);
+    showToast(`Команда «${cmd}» отправлена`);
+    setTimeout(() => { try { refreshDashStatus(); } catch (_) {} }, 2500);
   } catch (e) { showToast(`Ошибка выполнения команды ${cmd}`); }
 }
 
 // Check auth on load
 document.addEventListener('DOMContentLoaded', () => {
-  if (getToken()) {
+  const t = getToken();
+  if (t) {
+    setToken(t); // refresh cookie from localStorage
     init();
   } else {
     document.getElementById('gate').style.display = 'flex';

@@ -91,12 +91,16 @@ grep -q 'dns_apply_aaaa_only' "$ROOT/openwrt/usr/lib/rvpn/watchdog.sh" \
 	&& ok "watchdog aaaa-only fail-open" \
 	|| bad "watchdog still broken"
 
-# --- UI no query token ---
+# --- UI auth: cookie + header, no query token ---
 grep -q "X-Skvoz-Token" "$ROOT/openwrt/www/rvpn/index.html" \
 	&& ok "UI header token" || bad "UI header token"
-grep -n "token=' +" "$ROOT/openwrt/www/rvpn/index.html" >/dev/null 2>&1 \
-	&& bad "UI still appends token= to query" \
-	|| ok "UI no token in query"
+grep -q "credentials: 'same-origin'" "$ROOT/openwrt/www/rvpn/index.html" \
+	&& ok "UI same-origin cookies" || bad "UI same-origin cookies"
+if grep -E "url \+= '&token='" "$ROOT/openwrt/www/rvpn/index.html" >/dev/null 2>&1; then
+	bad "UI still appends token= to query"
+else
+	ok "UI no token in query"
+fi
 
 # --- postinst LAN bind ---
 grep -q "rfc1918_filter='1'" "$ROOT/tools/postinst.sh" \
@@ -104,6 +108,112 @@ grep -q "rfc1918_filter='1'" "$ROOT/tools/postinst.sh" \
 grep -q "zapret_enabled='0'" "$ROOT/tools/postinst.sh" \
 	&& bad "postinst still forces layers off" \
 	|| ok "postinst preserves layers on upgrade"
+
+# --- update.sh: semver compare (source helpers without OpenWrt paths) ---
+update_version_cmp() {
+	a=$(printf '%s' "$1" | sed 's/^v//;s/\r//g;s/[^0-9A-Za-z.].*//')
+	b=$(printf '%s' "$2" | sed 's/^v//;s/\r//g;s/[^0-9A-Za-z.].*//')
+	[ -n "$a" ] || a=0
+	[ -n "$b" ] || b=0
+	if [ "$a" = "$b" ]; then echo 0; return 0; fi
+	case "$a$b" in
+	*[!0-9.]*) [ "$a" \> "$b" ] && echo 1 || echo -1; return 0 ;;
+	esac
+	IFS=.
+	# shellcheck disable=SC2086
+	set -- $a
+	a1=${1:-0} a2=${2:-0} a3=${3:-0} a4=${4:-0}
+	# shellcheck disable=SC2086
+	set -- $b
+	b1=${1:-0} b2=${2:-0} b3=${3:-0} b4=${4:-0}
+	IFS=' '
+	for pair in "$a1:$b1" "$a2:$b2" "$a3:$b3" "$a4:$b4"; do
+		x=${pair%%:*}; y=${pair#*:}
+		case "$x" in ''|*[!0-9]*) x=0 ;; esac
+		case "$y" in ''|*[!0-9]*) y=0 ;; esac
+		if [ "$x" -gt "$y" ]; then echo 1; return 0; fi
+		if [ "$x" -lt "$y" ]; then echo -1; return 0; fi
+	done
+	echo 0
+}
+[ "$(update_version_cmp 0.2.2 0.2.1)" = "1" ] && ok "semver 0.2.2>0.2.1" || bad "semver gt"
+[ "$(update_version_cmp 0.2.1 0.2.10)" = "-1" ] && ok "semver 0.2.1<0.2.10" || bad "semver lt"
+[ "$(update_version_cmp 0.2.1 0.2.1)" = "0" ] && ok "semver eq" || bad "semver eq"
+[ "$(update_version_cmp v1.0.0 0.9.9)" = "1" ] && ok "semver strip v" || bad "semver strip v"
+
+# --- update.sh integrity / path guards present ---
+grep -q 'update_tar_members_safe' "$ROOT/openwrt/usr/lib/rvpn/update.sh" \
+	&& ok "tar member safety" || bad "tar member safety"
+grep -q 'checksum mismatch' "$ROOT/openwrt/usr/lib/rvpn/update.sh" \
+	&& ok "checksum verify" || bad "checksum verify"
+grep -q 'adblock-allow.txt' "$ROOT/openwrt/usr/lib/rvpn/update.sh" \
+	&& ok "preserve adblock-allow" || bad "preserve adblock-allow"
+grep -q 'update_nfqws_needed' "$ROOT/openwrt/usr/lib/rvpn/update.sh" \
+	&& ok "conditional nfqws fetch" || bad "conditional nfqws fetch"
+grep -q 'update-status' "$ROOT/openwrt/www/rvpn/cgi-bin/rvpn.cgi" \
+	&& ok "CGI update-status" || bad "CGI update-status"
+grep -q 'shipped_readonly' "$ROOT/openwrt/usr/lib/rvpn/ui-api.sh" \
+	&& ok "shipped lists readonly" || bad "shipped lists readonly"
+grep -q 'password_set' "$ROOT/openwrt/usr/lib/rvpn/ui-api.sh" \
+	&& ok "vps password masked" || bad "vps password masked"
+grep -q 'cgi_read_body' "$ROOT/openwrt/www/rvpn/cgi-bin/rvpn.cgi" \
+	&& ok "POST body reader" || bad "POST body reader"
+grep -q "method: 'POST'" "$ROOT/openwrt/www/rvpn/index.html" \
+	&& ok "UI domains-set POST" || bad "UI domains-set POST"
+grep -q 'SHA256SUMS' "$ROOT/tools/build-release.sh" \
+	&& ok "build emits SHA256SUMS" || bad "build emits SHA256SUMS"
+
+# --- CRLF strip after OTA ---
+grep -q "s/\\\\r\\$//" "$ROOT/openwrt/usr/lib/rvpn/update.sh" \
+	&& ok "OTA CRLF strip" || bad "OTA CRLF strip"
+
+# --- nfqws arch prefers DISTRIB_ARCH ---
+grep -q 'DISTRIB_ARCH' "$ROOT/openwrt/usr/lib/rvpn/nfqws-fetch.sh" \
+	&& ok "nfqws DISTRIB_ARCH" || bad "nfqws DISTRIB_ARCH"
+
+# --- copy_safe path traversal reject (inline mirror) ---
+reject_rel() {
+	rel_path=$1
+	case "$rel_path" in
+	''|/*) return 0 ;;
+	esac
+	printf '%s\n' "$rel_path" | tr '/' '\n' | grep -qx '\.\.' && return 0
+	return 1
+}
+reject_rel '../etc/passwd' && ok "reject .. path" || bad "reject .. path"
+reject_rel 'usr/lib/rvpn/x.sh' && bad "false reject good path" || ok "allow good path"
+
+# --- Patreon in VPN list ---
+grep -q 'patreon.com' "$ROOT/openwrt/usr/share/rvpn/rules/vpn-domains.txt" \
+	&& ok "patreon in vpn-domains" || bad "patreon missing"
+
+# --- DNS orphan heal / failsafe ---
+grep -q 'dns_heal_orphan' "$ROOT/openwrt/usr/lib/rvpn/dns.sh" \
+	&& ok "dns_heal_orphan" || bad "dns_heal_orphan missing"
+grep -q 'DNS_PERSIST_DIR' "$ROOT/openwrt/usr/lib/rvpn/dns.sh" \
+	&& ok "dns persistent backup" || bad "dns persistent backup"
+grep -q 'dns_heal_orphan' "$ROOT/openwrt/etc/init.d/rvpn" \
+	&& ok "init heal on start" || bad "init heal on start"
+grep -q 'both layers off' "$ROOT/openwrt/etc/init.d/rvpn" \
+	&& ok "init both-off cleanup" || bad "init both-off cleanup"
+grep -q "sysCmd('start')" "$ROOT/openwrt/www/rvpn/index.html" \
+	&& ok "UI start button wired" || bad "UI start missing"
+grep -q 'doFailsafe' "$ROOT/openwrt/www/rvpn/index.html" \
+	&& ok "UI failsafe" || bad "UI failsafe"
+grep -q 'ui_failsafe_run' "$ROOT/openwrt/usr/lib/rvpn/ui-api.sh" \
+	&& ok "ui_failsafe_run" || bad "ui_failsafe_run"
+grep -q 'failsafe)' "$ROOT/openwrt/www/rvpn/cgi-bin/rvpn.cgi" \
+	&& ok "CGI failsafe" || bad "CGI failsafe"
+grep -q 'dns_orphan' "$ROOT/openwrt/usr/lib/rvpn/selftest.sh" \
+	&& ok "selftest dns_orphan" || bad "selftest dns_orphan"
+grep -q 'failsafe_hint' "$ROOT/openwrt/usr/lib/rvpn/selftest.sh" \
+	&& ok "selftest failsafe_hint" || bad "selftest failsafe_hint"
+grep -q '\\037' "$ROOT/openwrt/usr/lib/rvpn/clash-parse.awk" \
+	&& ok "sub US delimiter" || bad "sub US delimiter"
+grep -q 'corrupt reality' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
+	&& ok "skip corrupt reality nodes" || bad "skip corrupt reality"
+grep -q "tr -d '\\\\r'" "$ROOT/openwrt/usr/lib/rvpn/zapret.sh" \
+	&& ok "nfqws CRLF strip" || bad "nfqws CRLF strip"
 
 if [ "$fail" -ne 0 ]; then
 	printf '\n%d test(s) failed\n' "$fail"
