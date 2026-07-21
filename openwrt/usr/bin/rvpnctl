@@ -43,13 +43,25 @@ status)
 	nft list tables 2>/dev/null | grep rvpn || echo "nft: no rvpn tables"
 	;;
 start)
-	svc start
+	RVPN_CLEAR_HOLD=1 svc start
 	;;
 stop)
 	svc stop
 	;;
 restart)
-	svc restart
+	RVPN_CLEAR_HOLD=1 svc restart
+	;;
+failsafe)
+	mode=${2:-hard}
+	case "$mode" in soft|hard) ;; *) mode=hard ;; esac
+	# Prefer short lock; always restore DNS
+	if ! rvpn_with_lock_timeout 8 /bin/sh -c "
+		. /usr/lib/rvpn/ui-api.sh
+		ui_failsafe_run '$mode'
+	"; then
+		. /usr/lib/rvpn/ui-api.sh
+		ui_failsafe_run "$mode"
+	fi
 	;;
 enable-zapret)
 	uci set rvpn.main.zapret_enabled='1'
@@ -202,7 +214,7 @@ wifi-qr)
 	ui_wifi_qr_json
 	;;
 *)
-	echo "Usage: rvpnctl status|start|stop|restart|enable-*|disable-*|…|zapret-*|nfqws-fetch|update-check|update|selftest|setup-done|wifi-qr|pool-optimize|sub-*"
+	echo "Usage: rvpnctl status|start|stop|restart|failsafe [soft|hard]|enable-*|disable-*|…|zapret-*|nfqws-fetch|update-check|update|selftest|setup-done|wifi-qr|pool-optimize|sub-*"
 	exit 1
 	;;
 esac

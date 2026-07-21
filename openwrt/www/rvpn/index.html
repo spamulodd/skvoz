@@ -786,8 +786,8 @@ async function runSelftest(elId) {
 async function doFailsafe(mode) {
   const m = mode || 'hard';
   const label = m === 'soft'
-    ? 'Сбросить DNS и nft (слои оставить)?'
-    : 'Выключить VPN+Zapret и восстановить DNS? Интернет должен заработать без обхода.';
+    ? 'Сбросить DNS/nft и поставить hold (слои в UCI останутся, но не стартуют до «Включить сервис»)?'
+    : 'Выключить VPN+Zapret и восстановить DNS? Интернет через провайдера.';
   if (!confirm(label)) return;
   showToast('Аварийный сброс...');
   try {
@@ -880,19 +880,23 @@ async function refreshDashStatus() {
     html += `<div style="padding: 0.5rem 0; border-bottom: 1px solid var(--border);"><strong>Версия Skvoz:</strong> ${ver}${build ? ' <span style="color:var(--text-muted)">(' + build + ')</span>' : ''}</div>`;
     html += `<div style="padding: 0.5rem 0; border-bottom: 1px solid var(--border);"><strong>Аптайм роутера:</strong> ${up}</div>`;
     html += `<div style="padding: 0.5rem 0; border-bottom: 1px solid var(--border);"><strong>Активный узел VPN:</strong> ${node} <span style="color:var(--text-muted)">(${delay})</span></div>`;
-    html += `<div style="padding: 0.5rem 0;"><strong>Рантайм:</strong> VPN ${st.vpn_running == 1 ? 'ok' : '—'} · zapret ${st.zapret_running == 1 ? 'ok' : '—'} · DNS ${st.dns_mode || '—'}${st.dns_orphan == 1 ? ' · <span style="color:var(--error)">ORPHAN</span>' : ''}${st.degraded == 1 ? ' · degraded' : ''}</div>`;
+    html += `<div style="padding: 0.5rem 0;"><strong>Рантайм:</strong> VPN ${st.vpn_running == 1 ? 'ok' : '—'} · zapret ${st.zapret_running == 1 ? 'ok' : '—'} · DNS ${st.dns_mode || '—'}${st.dns_orphan == 1 ? ' · <span style="color:var(--error)">ORPHAN</span>' : ''}${st.failsafe_hold == 1 ? ' · <span style="color:var(--error)">HOLD</span>' : ''}${st.degraded == 1 ? ' · degraded' : ''}${(st.corrupt_nodes > 0) ? (' · corrupt nodes: ' + st.corrupt_nodes) : ''}</div>`;
     document.getElementById('dash-status').innerHTML = html;
 
     const ban = document.getElementById('dash-failsafe-banner');
     if (ban) {
-      const bad = (st.dns_orphan == 1) || (st.degraded == 1 && st.vpn_running != 1 && st.dns_mode === 'fakeip');
+      const bad = (st.dns_orphan == 1) || (st.failsafe_hold == 1) || (st.degraded == 1 && st.vpn_running != 1 && st.dns_mode === 'fakeip');
       if (bad) {
         ban.classList.remove('hidden');
         const msg = document.getElementById('dash-failsafe-msg');
         if (msg) {
-          msg.textContent = st.dns_orphan == 1
-            ? ' FakeIP DNS без sing-box — после перезагрузки интернет «умирает». Нажмите сброс.'
-            : ' Слои в degraded-состоянии.';
+          if (st.failsafe_hold == 1) {
+            msg.textContent = ' Soft-hold: VPN/Zapret не стартуют до «Включить сервис». Интернет через ISP DNS.';
+          } else if (st.dns_orphan == 1) {
+            msg.textContent = ' FakeIP DNS без sing-box — нажмите сброс.';
+          } else {
+            msg.textContent = ' Слои в degraded-состоянии.';
+          }
         }
       } else {
         ban.classList.add('hidden');

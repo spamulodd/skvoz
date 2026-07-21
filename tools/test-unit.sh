@@ -214,6 +214,45 @@ grep -q 'corrupt reality' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
 	&& ok "skip corrupt reality nodes" || bad "skip corrupt reality"
 grep -q "tr -d '\\\\r'" "$ROOT/openwrt/usr/lib/rvpn/zapret.sh" \
 	&& ok "nfqws CRLF strip" || bad "nfqws CRLF strip"
+grep -q 'dns_lan_resolve_ok' "$ROOT/openwrt/usr/lib/rvpn/dns.sh" \
+	&& ok "dns_lan_resolve_ok" || bad "dns_lan_resolve_ok"
+grep -q 'dns_lan_resolve_ok' "$ROOT/openwrt/etc/init.d/rvpn" \
+	&& ok "init DNS probe" || bad "init DNS probe"
+grep -q 'rvpn_failsafe_hold' "$ROOT/openwrt/usr/lib/rvpn/common.sh" \
+	&& ok "failsafe hold helpers" || bad "failsafe hold helpers"
+grep -q 'failsafe_hold' "$ROOT/openwrt/etc/init.d/rvpn" \
+	&& ok "init respects hold" || bad "init respects hold"
+grep -q 'RVPN_CLEAR_HOLD=1' "$ROOT/openwrt/www/rvpn/cgi-bin/rvpn.cgi" \
+	&& ok "CGI start clears hold" || bad "CGI start clears hold"
+grep -q 'rvpn_with_lock_timeout' "$ROOT/openwrt/www/rvpn/cgi-bin/rvpn.cgi" \
+	&& ok "failsafe short lock" || bad "failsafe short lock"
+grep -q '^failsafe)' "$ROOT/openwrt/usr/bin/rvpnctl" \
+	&& ok "rvpnctl failsafe" || bad "rvpnctl failsafe"
+grep -q 'corrupt_nodes' "$ROOT/openwrt/usr/lib/rvpn/health.sh" \
+	&& ok "status corrupt_nodes" || bad "status corrupt_nodes"
+grep -q 'zapret-strategies/\*.strategy' "$ROOT/openwrt/usr/lib/rvpn/update.sh" \
+	&& ok "OTA strip strategy CRLF" || bad "OTA strip strategy CRLF"
+grep -q 'symlink escape' "$ROOT/openwrt/usr/lib/rvpn/update.sh" \
+	&& ok "OTA symlink reject" || bad "OTA symlink reject"
+grep -q 'failsafe_hold' "$ROOT/openwrt/www/rvpn/index.html" \
+	&& ok "UI hold banner" || bad "UI hold banner"
+
+# --- dns backup sanity (no OpenWrt): empty/FakeIP files ---
+tmpd=$(mktemp -d)
+listen=127.0.0.42
+printf '%s\n' '8.8.8.8' >"$tmpd/ok"
+printf '%s\n' "$listen" >"$tmpd/bad"
+: >"$tmpd/empty"
+dns_backup_file_sane_test() {
+	f=$1
+	[ -f "$f" ] || return 1
+	grep -Fq "$listen" "$f" 2>/dev/null && return 1
+	return 0
+}
+dns_backup_file_sane_test "$tmpd/ok" && ok "backup sane ok" || bad "backup sane ok"
+dns_backup_file_sane_test "$tmpd/bad" && bad "backup rejects fakeip" || ok "backup rejects fakeip"
+dns_backup_file_sane_test "$tmpd/empty" && ok "empty backup sane" || bad "empty backup sane"
+rm -rf "$tmpd"
 
 if [ "$fail" -ne 0 ]; then
 	printf '\n%d test(s) failed\n' "$fail"

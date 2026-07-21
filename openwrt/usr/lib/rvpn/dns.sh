@@ -273,6 +273,20 @@ dns_apply() {
 	log "dns applied → FakeIP $listen + filter_aaaa"
 }
 
+# True when router DNS answers a simple A query (LAN path).
+dns_lan_resolve_ok() {
+	if command -v nslookup >/dev/null 2>&1; then
+		nslookup openwrt.org 127.0.0.1 >/dev/null 2>&1 && return 0
+		nslookup ya.ru 127.0.0.1 >/dev/null 2>&1 && return 0
+	fi
+	if command -v resolveip >/dev/null 2>&1; then
+		resolveip -t 3 openwrt.org >/dev/null 2>&1 && return 0
+		resolveip -t 3 ya.ru >/dev/null 2>&1 && return 0
+	fi
+	# No resolver tool — do not claim failure
+	return 0
+}
+
 # Flush dnsmasq cache only (no UCI) — for domain list reloads.
 dns_flush_cache() {
 	killall -HUP dnsmasq 2>/dev/null || true

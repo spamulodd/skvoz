@@ -157,6 +157,24 @@ selftest_run() {
 		add_check "github_sync" 0 "GitHub sync pending"
 	fi
 
+	# 10b. failsafe hold
+	if rvpn_failsafe_hold_active; then
+		add_check "failsafe_hold" 0 "Soft hold active — Start to resume layers"
+		failsafe_hint=1
+	else
+		add_check "failsafe_hold" 1 "No failsafe hold"
+	fi
+
+	# 10c. corrupt subscription nodes
+	cn=$(rvpn_corrupt_node_count)
+	case "$cn" in ''|*[!0-9]*) cn=0 ;; esac
+	if [ "$cn" -gt 0 ]; then
+		add_check "corrupt_nodes" 0 "$cn node(s) look corrupt — refresh subscription"
+		failsafe_hint=1
+	else
+		add_check "corrupt_nodes" 1 "No corrupt Reality nodes"
+	fi
+
 	# 11. HTTPS probes (real IP via 1.1.1.1 — bypass FakeIP DNS)
 	selftest_probe() {
 		host=$1

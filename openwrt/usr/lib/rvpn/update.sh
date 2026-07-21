@@ -116,11 +116,16 @@ update_pick_asset() {
 	url=
 	digest=
 	for try in "$ed" full all standard slim tiny; do
-		# Prefer line that also has digest nearby — parse with awk over assets
-		line=$(printf '%s' "$json" | tr '}' '\n' | grep -F "skvoz-" | grep -F "-${try}.tar.gz" | head -1)
-		[ -n "$line" ] || continue
-		url=$(printf '%s' "$line" | grep -o '"browser_download_url": *"[^"]*"' | head -1 | cut -d '"' -f 4)
-		digest=$(printf '%s' "$line" | grep -o '"digest": *"sha256:[^"]*"' | head -1 | cut -d '"' -f 4 | sed 's/^sha256://')
+		# Match asset name then take url/digest from the same JSON object blob
+		blob=$(printf '%s' "$json" | tr '{' '\n' | grep -F "skvoz-" | grep -F "-${try}.tar.gz" | head -1)
+		[ -n "$blob" ] || continue
+		url=$(printf '%s' "$blob" | grep -o '"browser_download_url": *"[^"]*"' | head -1 | cut -d '"' -f 4)
+		digest=$(printf '%s' "$blob" | grep -o '"digest": *"sha256:[^"]*"' | head -1 | cut -d '"' -f 4 | sed 's/^sha256://')
+		# Fallback: digest may be on a neighboring fragment — look up by basename in full JSON
+		if [ -z "$digest" ] && [ -n "$url" ]; then
+			bn=$(basename "$url")
+			digest=$(printf '%s' "$json" | tr '{' '\n' | grep -F "$bn" | grep -o '"digest": *"sha256:[^"]*"' | head -1 | cut -d '"' -f 4 | sed 's/^sha256://')
+		fi
 		[ -n "$url" ] && break
 	done
 	if [ -z "$url" ]; then
@@ -365,8 +370,28 @@ update_run() {
 		return 1
 	fi
 
-	# Second pass: reject any extracted path escaping tmp_dir via ..
+	# Second pass: reject symlinks / paths escaping tmp_dir
+	unsafe=0
+	while IFS= read -r ent || [ -n "$ent" ]; do
+		[ -n "$ent" ] || continue
+		if [ -L "$ent" ]; then
+			tgt=$(readlink -f "$ent" 2>/dev/null || readlink "$ent" 2>/dev/null || echo "")
+			case "$tgt" in
+			"$tmp_dir"|"$tmp_dir"/*) ;;
+			*)
+				unsafe=1
+				log "update: symlink escape $ent -> $tgt"
+				;;
+			esac
+		fi
+	done <<EOF
+$(find "$tmp_dir" -type l 2>/dev/null)
+EOF
+	# Also reject any '..' directory name under extract
 	if find "$tmp_dir" -name '..' 2>/dev/null | grep -q .; then
+		unsafe=1
+	fi
+	if [ "$unsafe" = "1" ]; then
 		update_status_set error "path escape in extract"
 		rm -rf "$tmp_dir"
 		printf '{"status":"error","message":"unsafe extract layout"}\n'
@@ -398,7 +423,14 @@ update_run() {
 	written_files=$(paste -sd, "$tmp_dir/written_files" 2>/dev/null || tr '\n' ',' <"$tmp_dir/written_files" | sed 's/,$//')
 
 	chmod +x /usr/lib/rvpn/*.sh /etc/init.d/rvpn /usr/bin/rvpnctl /www/rvpn/cgi-bin/* 2>/dev/null || true
-	for f in /usr/lib/rvpn/*.sh /etc/init.d/rvpn /usr/bin/rvpnctl /www/rvpn/cgi-bin/rvpn.cgi; do
+	# Strip CRLF from scripts, strategies, and rule lists (Windows packaging)
+	for f in /usr/lib/rvpn/*.sh /usr/lib/rvpn/*.awk /etc/init.d/rvpn /usr/bin/rvpnctl \
+		/www/rvpn/cgi-bin/rvpn.cgi \
+		/usr/share/rvpn/zapret-strategies/*.strategy \
+		/usr/share/rvpn/zapret-strategies/INDEX \
+		/usr/share/rvpn/zapret-strategies/lists/*.txt \
+		/usr/share/rvpn/rules/*.txt \
+		/usr/share/rvpn/VERSION /usr/share/rvpn/BUILD /usr/share/rvpn/EDITION; do
 		[ -f "$f" ] || continue
 		sed -i 's/\r$//' "$f" 2>/dev/null || true
 	done

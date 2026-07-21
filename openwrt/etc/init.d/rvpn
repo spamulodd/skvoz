@@ -14,6 +14,23 @@ USE_PROCD=0
 . /usr/lib/rvpn/watchdog.sh
 . /usr/lib/rvpn/adblock.sh
 
+# Fail-open cleanup shared by stop / hold / DNS failure
+rvpn_runtime_failopen() {
+	watchdog_stop
+	nft_flush_zapret
+	nft_flush_vpn
+	nft_flush_quic
+	nft_flush_doh
+	ip rule del fwmark 0x1 lookup 100 2>/dev/null || true
+	ip route flush table 100 2>/dev/null || true
+	zapret_stop
+	sb_kill_ours
+	rm -f "$RVPN_RUN/sing-box.pid" "$RVPN_RUN/nfqws.pid" 2>/dev/null || true
+	dns_heal_orphan 2>/dev/null || true
+	dns_restore
+	adblock_apply 2>/dev/null || true
+}
+
 start_service() {
 	mkdir -p "$RVPN_RUN"
 	chmod 700 "$RVPN_RUN" 2>/dev/null || true
@@ -23,6 +40,19 @@ start_service() {
 	ensure_ui_secret >/dev/null || log "WARN: ui_secret not ready"
 	ensure_clash_secret >/dev/null || log "WARN: clash_secret not ready"
 	health_cron_install 2>/dev/null || true
+
+	# Soft failsafe hold: keep internet, do not auto-start VPN/zapret until cleared
+	if rvpn_failsafe_hold_active && [ "${RVPN_CLEAR_HOLD:-0}" != "1" ]; then
+		log "failsafe hold active — skip VPN/zapret (click Start / rvpnctl start to clear)"
+		rvpn_runtime_failopen
+		echo failsafe_hold >"$RVPN_STATE"
+		return 0
+	fi
+	if [ "${RVPN_CLEAR_HOLD:-0}" = "1" ]; then
+		rvpn_failsafe_hold_clear
+		log "failsafe hold cleared"
+	fi
+
 	health_preflight || return 1
 
 	zap=$(uci_get zapret_enabled)
@@ -31,18 +61,7 @@ start_service() {
 
 	if [ "$zap" != "1" ] && [ "$vpn" != "1" ]; then
 		log "both layers off — fail-open cleanup"
-		watchdog_stop
-		nft_flush_zapret
-		nft_flush_vpn
-		nft_flush_quic
-		nft_flush_doh
-		ip rule del fwmark 0x1 lookup 100 2>/dev/null || true
-		ip route flush table 100 2>/dev/null || true
-		zapret_stop
-		sb_kill_ours
-		rm -f "$RVPN_RUN/sing-box.pid" "$RVPN_RUN/nfqws.pid" 2>/dev/null || true
-		dns_restore
-		adblock_apply 2>/dev/null || true
+		rvpn_runtime_failopen
 		echo stopped >"$RVPN_STATE"
 		return 0
 	fi
@@ -81,6 +100,14 @@ start_service() {
 		log "CRITICAL: FakeIP orphan after start — heal"
 		dns_heal_orphan
 	fi
+	# Real resolve probe — catch "sb alive but DNS dead"
+	if ! dns_lan_resolve_ok; then
+		log "CRITICAL: DNS resolve failed after start — fail-open + hold"
+		rvpn_runtime_failopen
+		rvpn_failsafe_hold_set soft
+		echo failsafe_hold >"$RVPN_STATE"
+		return 1
+	fi
 	echo running >"$RVPN_STATE"
 	if [ "$vpn_ok" = "1" ]; then
 		watchdog_start
@@ -102,19 +129,7 @@ start_service() {
 
 stop_service() {
 	log "stop requested"
-	watchdog_stop
-	nft_flush_zapret
-	nft_flush_vpn
-	nft_flush_quic
-	nft_flush_doh
-	ip rule del fwmark 0x1 lookup 100 2>/dev/null || true
-	ip route flush table 100 2>/dev/null || true
-	zapret_stop
-	sb_kill_ours
-	rm -f "$RVPN_RUN/sing-box.pid" "$RVPN_RUN/nfqws.pid" 2>/dev/null || true
-	dns_restore
-	# Keep DNS adblock if still enabled; otherwise remove conf link
-	adblock_apply 2>/dev/null || true
+	rvpn_runtime_failopen
 	echo stopped >"$RVPN_STATE"
 	log "stop done (fail-open)"
 }
@@ -124,5 +139,6 @@ stop() { stop_service; }
 restart() {
 	stop_service
 	sleep 1
-	start_service
+	# restart is always operator-initiated (boot uses start)
+	RVPN_CLEAR_HOLD=1 start_service
 }

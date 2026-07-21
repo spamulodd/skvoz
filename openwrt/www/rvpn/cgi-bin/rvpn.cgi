@@ -169,13 +169,18 @@ stop)
 	;;
 start)
 	require_auth
-	svc_async start
+	# Clear soft failsafe hold then start
+	(
+		rvpn_with_lock /bin/sh -c 'RVPN_CLEAR_HOLD=1 /etc/init.d/rvpn start' >>"$RVPN_LOG" 2>&1
+	) &
 	text_hdr
 	echo OK
 	;;
 restart)
 	require_auth
-	svc_async restart
+	(
+		rvpn_with_lock /bin/sh -c 'RVPN_CLEAR_HOLD=1 /etc/init.d/rvpn restart' >>"$RVPN_LOG" 2>&1
+	) &
 	text_hdr
 	echo OK
 	;;
@@ -185,11 +190,23 @@ failsafe)
 	mode=$(get_arg mode)
 	[ -n "$mode" ] || mode=hard
 	case "$mode" in soft|hard) ;; *) mode=hard ;; esac
-	# Sync — user needs internet restored before the HTTP response returns
-	rvpn_with_lock /bin/sh -c "
+	# Short lock — if busy, still heal DNS without waiting on long update
+	if ! rvpn_with_lock_timeout 8 /bin/sh -c "
 		. /usr/lib/rvpn/ui-api.sh
 		ui_failsafe_run '$mode'
-	" 2>>"$RVPN_LOG"
+	" 2>>"$RVPN_LOG"; then
+		# Best-effort emergency DNS even when service lock is stuck
+		/bin/sh -c '
+			. /usr/lib/rvpn/common.sh
+			. /usr/lib/rvpn/dns.sh
+			. /usr/lib/rvpn/nft.sh
+			. /usr/lib/rvpn/singbox.sh
+			. /usr/lib/rvpn/zapret.sh
+			. /usr/lib/rvpn/watchdog.sh
+			. /usr/lib/rvpn/ui-api.sh
+			ui_failsafe_run "'"$mode"'"
+		' 2>>"$RVPN_LOG" || printf '{"ok":0,"error":"failsafe_failed"}\n'
+	fi
 	;;
 log)
 	require_auth

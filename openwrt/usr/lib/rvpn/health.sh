@@ -230,6 +230,10 @@ EOF
 		fi
 		;;
 	esac
+	failsafe_hold=0
+	rvpn_failsafe_hold_active && failsafe_hold=1 && degraded=1
+	corrupt_nodes=$(rvpn_corrupt_node_count)
+	case "$corrupt_nodes" in ''|*[!0-9]*) corrupt_nodes=0 ;; esac
 	cidr_n=$(count_grep '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/' "$RVPN_RULES/vpn-cidr.txt")
 	cidr_age=-1
 	if [ -f "$RVPN_RULES/vpn-cidr.txt" ]; then
@@ -254,10 +258,10 @@ EOF
 	uptime_h="${ud}д ${uh}ч ${um}м"
 	uptime_hj=$(json_escape "$uptime_h")
 
-	printf '{"ok":1,"version":"%s","build":"%s","uptime":"%s","uptime_sec":%s,"zapret_enabled":%s,"vpn_enabled":%s,"adblock_enabled":%s,"layer_zapret":%s,"layer_vpn":%s,"layer_adblock":%s,"adblock_running":%s,"adblock_domains":%s,"adblock_updated":"%s","zapret_running":%s,"vpn_running":%s,"wan_ok":%s,"mem_available_kb":%s,"loadavg_x100":%s,"lan_clients":%s,"clash_api":"127.0.0.1:9090","node_now":"%s","vpn_node":"%s","node_delay_ms":%s,"dns_mode":"%s","nft_vpn":%s,"watchdog":%s,"last_failopen":"%s","degraded":%s,"dns_orphan":%s,"cidr_count":%s,"cidr_age_days":%s}\n' \
+	printf '{"ok":1,"version":"%s","build":"%s","uptime":"%s","uptime_sec":%s,"zapret_enabled":%s,"vpn_enabled":%s,"adblock_enabled":%s,"layer_zapret":%s,"layer_vpn":%s,"layer_adblock":%s,"adblock_running":%s,"adblock_domains":%s,"adblock_updated":"%s","zapret_running":%s,"vpn_running":%s,"wan_ok":%s,"mem_available_kb":%s,"loadavg_x100":%s,"lan_clients":%s,"clash_api":"127.0.0.1:9090","node_now":"%s","vpn_node":"%s","node_delay_ms":%s,"dns_mode":"%s","nft_vpn":%s,"watchdog":%s,"last_failopen":"%s","degraded":%s,"dns_orphan":%s,"failsafe_hold":%s,"corrupt_nodes":%s,"cidr_count":%s,"cidr_age_days":%s}\n' \
 		"$ver_j" "$build_j" "$uptime_hj" "$uptime_sec" \
 		"${zap:-0}" "${vpn:-0}" "${adb:-0}" \
 		"${zap:-0}" "${vpn:-0}" "${adb:-0}" \
 		"$adb_run" "${adb_dom:-0}" "$adb_upd_j" "$zap_run" "$vpn_run" "$wan" "${mem:-0}" "${load:-0}" "${clients:-0}" \
-		"$node_now_j" "$node_now_j" "${node_delay:-0}" "$dns_j" "$nft_vpn" "$wd" "$fo_j" "$degraded" "$dns_orphan" "${cidr_n:-0}" "${cidr_age:--1}"
+		"$node_now_j" "$node_now_j" "${node_delay:-0}" "$dns_j" "$nft_vpn" "$wd" "$fo_j" "$degraded" "$dns_orphan" "$failsafe_hold" "$corrupt_nodes" "${cidr_n:-0}" "${cidr_age:--1}"
 }

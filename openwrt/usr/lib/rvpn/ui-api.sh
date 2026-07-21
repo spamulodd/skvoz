@@ -235,11 +235,17 @@ ui_health_detail_json() {
 	dns_orphan=0
 	ui_dns_orphan && dns_orphan=1
 	[ "$dns_orphan" = "1" ] && degraded=1
-	printf '{"ok":1,"singbox":%s,"nfqws":%s,"dns_mode":"%s","nft_vpn":%s,"nft_zapret":%s,"watchdog":%s,"last_failopen":"%s","degraded":%s,"dns_orphan":%s}\n' \
-		"$sb" "$nfq" "$dns_j" "$nft_vpn" "$nft_zap" "$wd" "$fo_j" "$degraded" "$dns_orphan"
+	failsafe_hold=0
+	rvpn_failsafe_hold_active && failsafe_hold=1 && degraded=1
+	corrupt_nodes=$(rvpn_corrupt_node_count)
+	case "$corrupt_nodes" in ''|*[!0-9]*) corrupt_nodes=0 ;; esac
+	printf '{"ok":1,"singbox":%s,"nfqws":%s,"dns_mode":"%s","nft_vpn":%s,"nft_zapret":%s,"watchdog":%s,"last_failopen":"%s","degraded":%s,"dns_orphan":%s,"failsafe_hold":%s,"corrupt_nodes":%s}\n' \
+		"$sb" "$nfq" "$dns_j" "$nft_vpn" "$nft_zap" "$wd" "$fo_j" "$degraded" "$dns_orphan" "$failsafe_hold" "$corrupt_nodes"
 }
 
-# Emergency: restore DNS/nft, stop engines. mode=soft keeps layer toggles; hard turns VPN+zapret off.
+# Emergency: restore DNS/nft, stop engines.
+# soft — keep layer toggles but set failsafe.hold (no auto-start until Start)
+# hard — turn VPN+zapret off and clear hold
 ui_failsafe_run() {
 	mode=${1:-hard}
 	# shellcheck source=/dev/null
@@ -266,16 +272,23 @@ ui_failsafe_run() {
 	rm -f "$RVPN_RUN/sing-box.pid" "$RVPN_RUN/nfqws.pid" 2>/dev/null || true
 	dns_heal_orphan 2>/dev/null || true
 	dns_restore 2>/dev/null || true
+	adblock_apply 2>/dev/null || true
 	if [ "$mode" = "hard" ]; then
 		uci set rvpn.main.vpn_enabled='0'
 		uci set rvpn.main.zapret_enabled='0'
 		uci commit rvpn
+		rvpn_failsafe_hold_clear
+	else
+		rvpn_failsafe_hold_set soft
 	fi
-	echo stopped >"$RVPN_STATE"
+	echo failsafe_hold >"$RVPN_STATE"
+	[ "$mode" = "hard" ] && echo stopped >"$RVPN_STATE"
 	date -u +%Y-%m-%dT%H:%MZ 2>/dev/null >"$RVPN_RUN/last_failopen" || date >"$RVPN_RUN/last_failopen"
-	log "FAILSAFE done — internet should work via ISP DNS"
-	printf '{"ok":1,"mode":"%s","vpn_enabled":%s,"zapret_enabled":%s,"msg":"failsafe_done"}\n' \
-		"$mode" "$(uci_get vpn_enabled)" "$(uci_get zapret_enabled)"
+	hold=0
+	rvpn_failsafe_hold_active && hold=1
+	log "FAILSAFE done mode=$mode hold=$hold"
+	printf '{"ok":1,"mode":"%s","vpn_enabled":%s,"zapret_enabled":%s,"failsafe_hold":%s,"msg":"failsafe_done"}\n' \
+		"$mode" "$(uci_get vpn_enabled)" "$(uci_get zapret_enabled)" "$hold"
 }
 
 ui_json_string_array_from_file() {

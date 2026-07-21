@@ -17,6 +17,9 @@ RVPN_WD_PID=$RVPN_RUN/watchdog.pid
 RVPN_SVC_LOCK=$RVPN_RUN/service.lock
 RVPN_SB_RELOAD_LOCK=$RVPN_RUN/sb_reloading
 RVPN_SB_RELOAD_FLOCK=$RVPN_RUN/sb_reload.flock
+# Soft failsafe: persist across reboot until explicit «Включить сервис»
+RVPN_FAILSAFE_HOLD=/etc/rvpn/failsafe.hold
+RVPN_FAILSAFE_HOLD_RUN=$RVPN_RUN/failsafe.hold
 
 mkdir -p "$RVPN_RUN" 2>/dev/null || true
 chmod 700 "$RVPN_RUN" 2>/dev/null || true
@@ -257,6 +260,67 @@ rvpn_with_lock() {
 		done
 		"$@"
 	) 9>"$RVPN_SVC_LOCK"
+}
+
+# Lock with short timeout (failsafe must not wait on long update/restart).
+# Usage: rvpn_with_lock_timeout SECONDS cmd...
+rvpn_with_lock_timeout() {
+	secs=$1
+	shift
+	case "$secs" in ''|*[!0-9]*) secs=8 ;; esac
+	mkdir -p "$RVPN_RUN"
+	if ! command -v flock >/dev/null 2>&1; then
+		"$@"
+		return $?
+	fi
+	(
+		i=0
+		while ! flock -n 9; do
+			i=$((i + 1))
+			if [ "$i" -gt "$secs" ]; then
+				log "rvpn_with_lock_timeout: busy after ${secs}s"
+				exit 2
+			fi
+			sleep 1
+		done
+		"$@"
+	) 9>"$RVPN_SVC_LOCK"
+}
+
+rvpn_failsafe_hold_active() {
+	[ -f "$RVPN_FAILSAFE_HOLD" ] || [ -f "$RVPN_FAILSAFE_HOLD_RUN" ]
+}
+
+rvpn_failsafe_hold_set() {
+	mode=${1:-soft}
+	mkdir -p /etc/rvpn "$RVPN_RUN" 2>/dev/null || true
+	printf '%s\n%s\n' "$mode" "$(date -u +%Y-%m-%dT%H:%MZ 2>/dev/null || date)" >"$RVPN_FAILSAFE_HOLD"
+	cp -f "$RVPN_FAILSAFE_HOLD" "$RVPN_FAILSAFE_HOLD_RUN" 2>/dev/null || true
+	log "failsafe hold set ($mode) — layers will not auto-start until cleared"
+}
+
+rvpn_failsafe_hold_clear() {
+	rm -f "$RVPN_FAILSAFE_HOLD" "$RVPN_FAILSAFE_HOLD_RUN" 2>/dev/null || true
+}
+
+# Count UCI nodes with corrupt Reality import (short key / network-as-fingerprint).
+rvpn_corrupt_node_count() {
+	n=0
+	for id in $(uci -q show rvpn 2>/dev/null | sed -n 's/^rvpn\.\([^=]*\)=node$/\1/p'); do
+		en=$(uci -q get "rvpn.$id.enabled")
+		[ "$en" = "0" ] && continue
+		pbk=$(uci -q get "rvpn.$id.reality_public_key")
+		fp=$(uci -q get "rvpn.$id.fingerprint")
+		bad=0
+		if [ -n "$pbk" ] && [ "${#pbk}" -lt 20 ]; then
+			bad=1
+		fi
+		case "$fp" in
+		tcp|ws|grpc|http|h2|quic) bad=1 ;;
+		esac
+		[ "$bad" = "1" ] && n=$((n + 1))
+	done
+	echo "$n"
 }
 
 list_domains() {
