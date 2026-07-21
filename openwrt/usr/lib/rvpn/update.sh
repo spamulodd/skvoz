@@ -12,7 +12,7 @@ UPDATE_EDITION_FILE=/usr/share/rvpn/EDITION
 
 update_current_version() {
 	if [ -f "$UPDATE_VERSION_FILE" ]; then
-		cat "$UPDATE_VERSION_FILE" 2>/dev/null
+		tr -d '\r\n' <"$UPDATE_VERSION_FILE" 2>/dev/null
 	else
 		echo "unknown"
 	fi
@@ -41,34 +41,44 @@ update_pick_asset_url() {
 }
 
 update_remote_version() {
-	# Fetch latest release tag from GitHub API
+	# Fetch latest release tag from GitHub API (short timeouts — CGI must not hang)
 	api_url="https://api.github.com/repos/$SKVOZ_REPO/releases/latest"
-	tag=$(rvpn_curl -sS --connect-timeout 5 --max-time 15 "$api_url" 2>/dev/null | grep -o '"tag_name": *"[^"]*"' | cut -d '"' -f 4 | head -n 1)
+	body=$(rvpn_curl -sS --connect-timeout 4 --max-time 12 "$api_url" 2>/dev/null) || body=
+	if [ -z "$body" ]; then
+		body=$(rvpn_curl -sS --connect-timeout 4 --max-time 12 \
+			"https://ghproxy.com/$api_url" 2>/dev/null) || body=
+	fi
+	tag=$(printf '%s' "$body" | grep -o '"tag_name": *"[^"]*"' | head -n 1 | cut -d '"' -f 4)
 	if [ -n "$tag" ]; then
-		# Remove 'v' prefix if present
-		echo "$tag" | sed 's/^v//'
+		echo "$tag" | sed 's/^v//;s/\r//g'
 	else
 		echo ""
 	fi
 }
 
 update_check_json() {
-	current=$(update_current_version)
-	remote=$(update_remote_version)
-	
+	current=$(update_current_version | tr -d '\r\n ')
+	[ -n "$current" ] || current=unknown
+	remote=$(update_remote_version | tr -d '\r\n ')
+	ed=$(update_current_edition | tr -d '\r\n ')
+	proxy=0
+	rvpn_proxy_ready && proxy=1
+
 	if [ -z "$remote" ]; then
-		printf '{"status":"error","message":"could not fetch remote version"}\n'
-		return 1
+		printf '{"ok":0,"status":"error","message":"GitHub недоступен — включите VPN и повторите","current":"%s","remote":"","edition":"%s","has_update":0,"proxy":%s}\n' \
+			"$(json_escape "$current")" "$(json_escape "$ed")" "$proxy"
+		return 0
 	fi
-	
+
 	has_update=0
-	if [ "$current" != "$remote" ] && [ "$current" != "v$remote" ]; then
+	cur_n=$(echo "$current" | sed 's/^v//')
+	rem_n=$(echo "$remote" | sed 's/^v//')
+	if [ "$cur_n" != "$rem_n" ]; then
 		has_update=1
 	fi
-	
-	ed=$(update_current_edition)
-	printf '{"status":"ok","current":"%s","remote":"%s","edition":"%s","has_update":%d}\n' \
-		"$(json_escape "$current")" "$(json_escape "$remote")" "$(json_escape "$ed")" "$has_update"
+
+	printf '{"ok":1,"status":"ok","current":"%s","remote":"%s","edition":"%s","has_update":%d,"proxy":%s}\n' \
+		"$(json_escape "$current")" "$(json_escape "$remote")" "$(json_escape "$ed")" "$has_update" "$proxy"
 	return 0
 }
 
@@ -168,9 +178,13 @@ update_run() {
 	written_files=$(paste -sd, "$tmp_dir/written_files" 2>/dev/null || cat "$tmp_dir/written_files" | tr '\n' ',' | sed 's/,$//')
 
 	
-	# Chmod scripts
+	# Chmod + strip Windows CRLF (breaks ash on OpenWrt)
 	chmod +x /usr/lib/rvpn/*.sh /etc/init.d/rvpn /usr/bin/rvpnctl /www/rvpn/cgi-bin/* 2>/dev/null || true
-	
+	for f in /usr/lib/rvpn/*.sh /etc/init.d/rvpn /usr/bin/rvpnctl /www/rvpn/cgi-bin/rvpn.cgi; do
+		[ -f "$f" ] || continue
+		sed -i 's/\r$//' "$f" 2>/dev/null || true
+	done
+
 	# Optionally call nfqws_fetch_run and zapret_sync_run if available
 	if [ -f /usr/lib/rvpn/nfqws-fetch.sh ]; then
 		. /usr/lib/rvpn/nfqws-fetch.sh

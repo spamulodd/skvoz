@@ -37,12 +37,14 @@ button:hover { background: var(--accent-hover); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 button.outline { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
 button.outline:hover { background: rgba(31, 107, 74, 0.1); }
-input[type="text"], input[type="password"], select {
+input[type="text"], input[type="password"], select, textarea {
   width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 0.5rem;
   font-family: var(--font-ui); font-size: 1rem; margin-bottom: 1rem;
   background: var(--surface); color: var(--text); outline: none;
+  box-sizing: border-box;
 }
-input:focus, select:focus { border-color: var(--accent); }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+textarea { resize: vertical; min-height: 8rem; }
 
 #app, #gate { height: 100%; display: none; flex-direction: column; overflow: hidden; }
 #gate { justify-content: center; align-items: center; background: var(--ink); color: white; }
@@ -97,8 +99,9 @@ input:focus, select:focus { border-color: var(--accent); }
     <h1>Skvoz</h1>
     <p style="text-align: center; color: var(--text-muted); margin-bottom: 2rem;">Введите пароль для доступа к роутеру</p>
     <form id="login-form">
-      <input type="password" id="gate-pwd" placeholder="Пароль" required>
-      <button type="submit" style="width: 100%">Войти</button>
+      <input type="password" id="gate-pwd" placeholder="Пароль" required autocomplete="current-password">
+      <button type="submit" id="gate-btn" style="width: 100%">Войти</button>
+      <p id="gate-err" style="display:none; text-align:center; color:#f87171; margin-top:0.75rem; font-size:0.9rem;"></p>
     </form>
   </div>
 </div>
@@ -137,12 +140,12 @@ input:focus, select:focus { border-color: var(--accent); }
             <label style="cursor:pointer; flex:1; text-align:center;"><input type="radio" name="vpn_type" value="vps" onchange="toggleVpnType()"> VPS</label>
           </div>
           <div id="vpn-sub-pane">
-            <input type="text" id="sub_id" placeholder="Название / ID подписки (опционально)">
-            <input type="text" id="sub_url" placeholder="URL подписки (VLESS/Shadowsocks/др.)">
+            <input type="text" id="sub_url" placeholder="URL подписки (https://…)">
             <div class="flex">
-              <button onclick="saveSub()">Сохранить</button>
-              <button onclick="refreshSub()" class="outline">Обновить данные</button>
+              <button onclick="saveSub()">Сохранить и обновить ноды</button>
+              <button onclick="refreshSub()" class="outline">Только обновить</button>
             </div>
+            <p style="color:var(--text-muted); font-size:0.85rem;">Сохраняется в <code>sub1</code>. Нужен URL подписки (Clash/Meta), не одна VLESS-строка.</p>
           </div>
           <div id="vpn-vps-pane" class="hidden">
             <input type="text" id="vps_server" placeholder="Сервер (IP или домен)">
@@ -239,22 +242,67 @@ input:focus, select:focus { border-color: var(--accent); }
       <!-- VPN Tab -->
       <div id="tab-vpn" class="panel hidden">
         <h2>Управление VPN</h2>
-        <div class="flex" style="margin-bottom: 1.5rem; flex-wrap: wrap;">
-          <button onclick="apiText('ping').then(r=>showToast(r)).catch(()=>showToast('Ошибка'))">Пинг маршрутов</button>
-          <button onclick="fetchPool('dash-pool-res')" class="outline">Показать пул</button>
-          <button onclick="fetchSubs()" class="outline">Список подписок</button>
+        <div class="flex" style="margin-bottom: 1rem; flex-wrap: wrap;">
+          <button onclick="enableVpsSolo()">Включить VPS</button>
+          <button onclick="apiText('ping').then(r=>showToast(r)).catch(()=>showToast('Ошибка'))" class="outline">Пинг</button>
+          <button onclick="loadPoolUI()" class="outline">Обновить пул</button>
+          <button onclick="probePoolUI()" class="outline">Проверить задержки</button>
+          <button onclick="fetchSubs()" class="outline">Подписки</button>
         </div>
-        <pre id="dash-pool-res" class="log-box" style="height: 250px; display:none; margin-bottom: 1.5rem;"></pre>
+        <h3>Ноды (вкл/выкл)</h3>
+        <div id="dash-pool-ui" style="background: var(--bg); border-radius: 0.5rem; margin-bottom: 1.5rem; max-height: 320px; overflow: auto;">Загрузка…</div>
+
+        <h3>VPS (Hysteria2)</h3>
+        <p id="dash-vps-status" style="color: var(--text-muted); margin-bottom: 0.75rem;">—</p>
+        <div class="flex-col" style="margin-bottom: 1.5rem;">
+          <input type="text" id="dash_vps_server" placeholder="Сервер (IP или домен)">
+          <div class="flex" style="flex-wrap: wrap;">
+            <input type="text" id="dash_vps_port" placeholder="Порт" style="max-width: 120px;">
+            <input type="text" id="dash_vps_sni" placeholder="SNI" style="flex:1; min-width: 140px;">
+          </div>
+          <input type="password" id="dash_vps_password" placeholder="Пароль">
+          <div class="flex" style="flex-wrap: wrap;">
+            <button onclick="saveDashVps()">Сохранить и включить VPS</button>
+            <button onclick="loadDashVps()" class="outline">Обновить поля</button>
+          </div>
+        </div>
+
+        <h3>Подписка</h3>
+        <div class="flex-col" style="margin-bottom: 1rem;">
+          <input type="text" id="dash_sub_url" placeholder="URL подписки (https://…)">
+          <div class="flex" style="flex-wrap: wrap;">
+            <button onclick="saveDashSub()">Сохранить URL</button>
+            <button onclick="refreshDashSub()" class="outline">Обновить ноды</button>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.85rem;">ID всегда <code>sub1</code>. После сохранения нажмите «Обновить ноды».</p>
+        </div>
         <div id="dash-subs-res" style="background: var(--bg); border-radius: 0.5rem;"></div>
       </div>
       <!-- Lists Tab -->
       <div id="tab-lists" class="panel hidden">
         <h2>Списки и категории</h2>
-        <p>Категории доменов и маршрутизации, доступные в системе.</p>
+        <p>Категории (shipped) и ваш пользовательский редактор ниже.</p>
         <button onclick="syncLists()" style="margin-bottom: 1.5rem;">Синхронизировать списки</button>
-        <div id="dash-categories" class="chips" style="margin-bottom: 2.5rem;"></div>
-        
-        <h3 style="border-top: 1px solid var(--border); padding-top: 1.5rem;">Добавить домен в список</h3>
+        <div id="dash-categories" class="chips" style="margin-bottom: 2rem;"></div>
+
+        <h3 style="border-top: 1px solid var(--border); padding-top: 1.5rem;">Редактор списков</h3>
+        <div class="flex" style="align-items: flex-start; flex-wrap: wrap; margin-bottom: 0.75rem;">
+          <select id="edit_domain_list" style="width:auto; min-width: 220px;" onchange="loadListEditor()">
+            <option value="vpn">VPN — свои</option>
+            <option value="vpn-shipped">VPN — базовый список</option>
+            <option value="zapret">Zapret/DPI — свои</option>
+            <option value="dpi-shipped">Zapret/DPI — базовый</option>
+            <option value="games">Игры DIRECT — свои</option>
+            <option value="games-shipped">Игры — базовый</option>
+            <option value="allow">Adblock allow</option>
+          </select>
+          <button onclick="loadListEditor()" class="outline">Загрузить</button>
+          <button onclick="saveListEditor()">Сохранить список</button>
+        </div>
+        <textarea id="edit_domain_text" rows="12" placeholder="по одному домену на строку" style="width:100%; font-family: ui-monospace, monospace; font-size: 0.85rem; margin-bottom: 1.5rem;"></textarea>
+        <div id="dash-list-chips" class="chips" style="margin-bottom: 2rem;"></div>
+
+        <h3>Быстро добавить один домен</h3>
         <div class="flex" style="align-items: flex-start; flex-wrap: wrap;">
           <input type="text" id="add_domain_name" placeholder="example.com" style="flex:1; min-width: 200px;">
           <select id="add_domain_list" style="width:auto; min-width: 150px;">
@@ -313,7 +361,18 @@ const TOTAL_STEPS = 8;
 let wizardData = {};
 
 function getToken() { return localStorage.getItem('skvoz_token') || ''; }
-function setToken(t) { localStorage.setItem('skvoz_token', t); }
+function setToken(t) {
+  if (t) localStorage.setItem('skvoz_token', t);
+  else localStorage.removeItem('skvoz_token');
+  // uhttpd often drops custom headers; cookie is readable by CGI as HTTP_COOKIE
+  try {
+    if (t) {
+      document.cookie = 'skvoz_token=' + encodeURIComponent(t) + '; path=/; SameSite=Strict';
+    } else {
+      document.cookie = 'skvoz_token=; path=/; Max-Age=0; SameSite=Strict';
+    }
+  } catch (e) {}
+}
 
 function showToast(msg) {
   const t = document.getElementById('toast');
@@ -324,6 +383,7 @@ function showToast(msg) {
 
 async function api(cmd, params={}) {
   // CGI: first query token is the action (status|setup|set&layer=…), not cmd=
+  // Always put auth in query — OpenWrt uhttpd does not pass X-Skvoz-Token to CGI.
   let url = API + '?' + cmd;
   for (let k in params) {
     if (params[k] !== undefined && params[k] !== null && params[k] !== '') {
@@ -331,14 +391,9 @@ async function api(cmd, params={}) {
     }
   }
   const t = getToken();
+  if (t) url += '&token=' + encodeURIComponent(t);
   const hdrs = t ? { 'X-Skvoz-Token': t } : {};
-  let res = await fetch(url, { cache: 'no-store', credentials: 'same-origin', headers: hdrs });
-  if (res.status === 401 && t) {
-    const sep = url.indexOf('?') >= 0 ? '&' : '?';
-    res = await fetch(url + sep + 'token=' + encodeURIComponent(t), {
-      cache: 'no-store', credentials: 'same-origin', headers: hdrs
-    });
-  }
+  const res = await fetch(url, { cache: 'no-store', credentials: 'same-origin', headers: hdrs });
   if (res.status === 401 || res.status === 403) {
     setToken('');
     document.getElementById('gate').style.display = 'flex';
@@ -359,11 +414,28 @@ async function apiText(cmd, params={}) {
 
 document.getElementById('login-form').onsubmit = async (e) => {
   e.preventDefault();
-  setToken(document.getElementById('gate-pwd').value);
+  const errEl = document.getElementById('gate-err');
+  const btn = document.getElementById('gate-btn');
+  errEl.style.display = 'none';
+  const pwd = (document.getElementById('gate-pwd').value || '').trim();
+  if (!pwd) {
+    errEl.textContent = 'Введите пароль';
+    errEl.style.display = 'block';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Вход…';
+  setToken(pwd);
   try {
-    await init();
+    await init({ fromLogin: true });
   } catch (err) {
-    showToast('Ошибка авторизации');
+    setToken('');
+    errEl.textContent = (err && err.message === 'Unauthorized') ? 'Неверный пароль' : 'Ошибка входа';
+    errEl.style.display = 'block';
+    showToast(errEl.textContent);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Войти';
   }
 };
 
@@ -372,7 +444,8 @@ function logout() {
   location.reload();
 }
 
-async function init() {
+async function init(opts) {
+  opts = opts || {};
   if (!getToken()) {
     document.getElementById('gate').style.display = 'flex';
     return;
@@ -393,7 +466,10 @@ async function init() {
       initDashboard();
     }
   } catch (e) {
-    // Handled by api() 401
+    if (opts.fromLogin) throw e;
+    // auto-init on load: stay on gate
+    document.getElementById('gate').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
   }
 }
 
@@ -453,18 +529,23 @@ function toggleVpnType() {
 
 // VPN
 async function saveSub() {
-  const id = document.getElementById('sub_id').value;
-  const url = document.getElementById('sub_url').value;
-  if(!url) return showToast('Введите URL');
+  const urlEl = document.getElementById('sub_url') || document.getElementById('dash_sub_url');
+  const url = (urlEl && urlEl.value || '').trim();
+  if (!url) return showToast('Введите URL');
+  if (!/^https?:\/\//i.test(url)) return showToast('URL должен начинаться с http(s)://');
   try {
-    await apiText('sub-set', { id, url });
-    showToast('Подписка сохранена');
+    const j = await apiJson('sub-set', { id: 'sub1', url, enabled: '1' });
+    if (j && j.error) return showToast('Ошибка: ' + j.error);
+    showToast('Подписка сохранена, обновляю ноды…');
+    await apiJson('sub-refresh', { id: 'sub1' });
+    showToast('Обновление нод запущено (подождите ~30с)');
+    if (typeof fetchSubs === 'function') setTimeout(fetchSubs, 5000);
   } catch (e) { showToast('Ошибка сохранения подписки'); }
 }
 async function refreshSub() {
   try {
-    const res = await apiText('sub-refresh');
-    showToast(res || 'Обновление запущено');
+    await apiJson('sub-refresh', { id: 'sub1' });
+    showToast('Обновление запущено');
   } catch (e) { showToast('Ошибка обновления'); }
 }
 async function saveVps() {
@@ -472,13 +553,95 @@ async function saveVps() {
     server: document.getElementById('vps_server').value,
     port: document.getElementById('vps_port').value,
     password: document.getElementById('vps_password').value,
-    sni: document.getElementById('vps_sni').value
+    sni: document.getElementById('vps_sni').value || 'bing.com',
+    insecure: '1'
   };
-  if(!params.server || !params.port) return showToast('Заполните сервер и порт');
+  if(!params.server || !params.port || !params.password) return showToast('Заполните сервер, порт и пароль');
   try {
-    await apiText('vps-set', params);
-    showToast('Настройки VPS сохранены');
+    await apiJson('vps-set', params);
+    showToast('VPS сохранён, VPN включается…');
   } catch (e) { showToast('Ошибка сохранения VPS'); }
+}
+async function loadDashVps() {
+  try {
+    const j = await apiJson('vps-get');
+    if (!j || !j.ok) return;
+    document.getElementById('dash_vps_server').value = j.server || '';
+    document.getElementById('dash_vps_port').value = j.port || '433';
+    document.getElementById('dash_vps_password').value = j.password || '';
+    document.getElementById('dash_vps_sni').value = j.sni || 'bing.com';
+    const st = document.getElementById('dash-vps-status');
+    if (st) {
+      st.textContent = j.configured == 1
+        ? (`VPS: ${j.server}:${j.port} · node ${j.enabled == 1 ? 'вкл' : 'выкл'} · VPN слой ${j.vpn_enabled == 1 ? 'ВКЛ' : 'ВЫКЛ'}`)
+        : 'VPS ещё не настроен';
+    }
+  } catch (e) { showToast('Не удалось загрузить VPS'); }
+}
+async function saveDashVps() {
+  const params = {
+    server: document.getElementById('dash_vps_server').value.trim(),
+    port: document.getElementById('dash_vps_port').value.trim() || '433',
+    password: document.getElementById('dash_vps_password').value,
+    sni: document.getElementById('dash_vps_sni').value.trim() || 'bing.com',
+    insecure: '1'
+  };
+  if (!params.server || !params.password) return showToast('Заполните сервер и пароль');
+  try {
+    await apiJson('vps-set', params);
+    showToast('VPS сохранён и VPN включён');
+    setTimeout(loadDashVps, 1500);
+    setTimeout(refreshDashStatus, 8000);
+  } catch (e) { showToast('Ошибка сохранения VPS'); }
+}
+async function enableVpsSolo() {
+  try {
+    const j = await apiJson('vps-enable', { solo: '1' });
+    if (j && j.error) return showToast('Нет сохранённого VPS — заполните форму ниже');
+    showToast('Переключено на VPS, VPN перезапускается…');
+    setTimeout(loadDashVps, 2000);
+    setTimeout(refreshDashStatus, 8000);
+  } catch (e) { showToast('Ошибка включения VPS'); }
+}
+async function saveDashSub() {
+  const url = (document.getElementById('dash_sub_url').value || '').trim();
+  if (!url) return showToast('Введите URL');
+  document.getElementById('sub_url') && (document.getElementById('sub_url').value = url);
+  await saveSub();
+}
+async function refreshDashSub() {
+  await refreshSub();
+  setTimeout(fetchSubs, 5000);
+}
+async function loadListEditor() {
+  const layer = document.getElementById('edit_domain_list').value;
+  try {
+    const j = await apiJson('domains-text', { layer });
+    const ta = document.getElementById('edit_domain_text');
+    ta.value = (j && j.text) ? j.text.replace(/\\n/g, '\n') : '';
+    // chips + delete
+    const chips = document.getElementById('dash-list-chips');
+    const lines = ta.value.split(/\n/).map(s => s.trim()).filter(Boolean);
+    chips.innerHTML = lines.map(d =>
+      `<div class="chip">${d} <span style="cursor:pointer;margin-left:0.35rem;opacity:0.7" onclick="delDomainChip('${layer}','${d.replace(/'/g, '')}')">×</span></div>`
+    ).join('') || '<span style="color:var(--text-muted)">Список пуст</span>';
+  } catch (e) { showToast('Не удалось загрузить список'); }
+}
+async function saveListEditor() {
+  const layer = document.getElementById('edit_domain_list').value;
+  const text = document.getElementById('edit_domain_text').value;
+  try {
+    const j = await apiJson('domains-set', { layer, text });
+    if (j && j.error) return showToast('Ошибка: ' + j.error);
+    showToast('Список сохранён (' + (j.count != null ? j.count : '?') + ')');
+    loadListEditor();
+  } catch (e) { showToast('Ошибка сохранения списка'); }
+}
+async function delDomainChip(layer, domain) {
+  try {
+    await apiJson('del-domain', { layer, domain });
+    loadListEditor();
+  } catch (e) { showToast('Ошибка удаления'); }
 }
 
 // Lists
@@ -597,6 +760,13 @@ async function loadWifi(infoId, qrId) {
 // Finish Wizard
 async function finishSetup() {
   try {
+    // If VPS fields filled on last pass — save; else just enable existing VPS/VPN
+    const vs = document.getElementById('vps_server');
+    if (vs && vs.value.trim() && document.getElementById('vps_password').value) {
+      await saveVps();
+    } else {
+      try { await apiJson('vps-enable', { solo: '1' }); } catch (e) {}
+    }
     await apiText('setup-done');
     location.reload();
   } catch (e) { showToast('Ошибка завершения настройки'); }
@@ -613,32 +783,45 @@ function switchTab(tab) {
   currentTab = tab;
 
   if (tab === 'status') refreshDashStatus();
-  if (tab === 'lists') loadCategories('dash-categories');
+  if (tab === 'vpn') { loadDashVps(); fetchSubs(); loadPoolUI(); }
+  if (tab === 'lists') { loadCategories('dash-categories'); loadListEditor(); }
   if (tab === 'zapret') loadZapretStrats('dash-zapret-strat');
   if (tab === 'wifi') loadWifi('dash-wifi-info', 'dash-wifi-qr');
 }
 
 function initDashboard() {
   refreshDashStatus();
+  loadDashVps();
 }
 
 async function refreshDashStatus() {
   try {
-    const [snap, stat] = await Promise.all([
+    const [snap, statRaw] = await Promise.all([
       apiJson('snapshot').catch(()=>({})),
       apiJson('status').catch(()=>({}))
     ]);
-    
+    // status fields live at top-level of status OR nested under snapshot.status
+    const st = Object.assign({}, (snap && snap.status) || {}, statRaw || {});
+
+    const ver = st.version || snap.version || '—';
+    const build = st.build || '';
+    const up = st.uptime || snap.uptime || '—';
+    const node = st.vpn_node || st.node_now || '—';
+    const delay = (st.node_delay_ms != null && st.node_delay_ms !== '') ? (st.node_delay_ms + ' ms') : '—';
+    const vpnOn = st.layer_vpn != null ? st.layer_vpn : st.vpn_enabled;
+    const zapOn = st.layer_zapret != null ? st.layer_zapret : st.zapret_enabled;
+    const adbOn = st.layer_adblock != null ? st.layer_adblock : st.adblock_enabled;
+
     let html = '';
-    html += `<div style="padding: 0.5rem 0; border-bottom: 1px solid var(--border);"><strong>Версия Skvoz:</strong> ${snap.version || '-'}</div>`;
-    html += `<div style="padding: 0.5rem 0; border-bottom: 1px solid var(--border);"><strong>Аптайм роутера:</strong> ${snap.uptime || '-'}</div>`;
-    html += `<div style="padding: 0.5rem 0;"><strong>Активный узел VPN:</strong> ${stat.vpn_node || '-'}</div>`;
-    
+    html += `<div style="padding: 0.5rem 0; border-bottom: 1px solid var(--border);"><strong>Версия Skvoz:</strong> ${ver}${build ? ' <span style="color:var(--text-muted)">(' + build + ')</span>' : ''}</div>`;
+    html += `<div style="padding: 0.5rem 0; border-bottom: 1px solid var(--border);"><strong>Аптайм роутера:</strong> ${up}</div>`;
+    html += `<div style="padding: 0.5rem 0; border-bottom: 1px solid var(--border);"><strong>Активный узел VPN:</strong> ${node} <span style="color:var(--text-muted)">(${delay})</span></div>`;
+    html += `<div style="padding: 0.5rem 0;"><strong>Рантайм:</strong> VPN ${st.vpn_running == 1 ? 'ok' : '—'} · zapret ${st.zapret_running == 1 ? 'ok' : '—'} · DNS ${st.dns_mode || '—'}</div>`;
     document.getElementById('dash-status').innerHTML = html;
 
-    updateToggleBtn(document.getElementById('btn-layer-vpn'), 'VPN', stat.layer_vpn);
-    updateToggleBtn(document.getElementById('btn-layer-zapret'), 'Zapret', stat.layer_zapret);
-    updateToggleBtn(document.getElementById('btn-layer-adblock'), 'Adblock', stat.layer_adblock);
+    updateToggleBtn(document.getElementById('btn-layer-vpn'), 'VPN', vpnOn);
+    updateToggleBtn(document.getElementById('btn-layer-zapret'), 'Zapret', zapOn);
+    updateToggleBtn(document.getElementById('btn-layer-adblock'), 'Adblock', adbOn);
   } catch (e) {
     document.getElementById('dash-status').innerHTML = 'Ошибка загрузки статуса';
   }
@@ -646,12 +829,14 @@ async function refreshDashStatus() {
 
 function updateToggleBtn(btn, name, state) {
   if(!btn) return;
-  const isOn = (state == '1' || state === true);
+  const isOn = (state == 1 || state === '1' || state === true);
   btn.innerText = `${name}: ${isOn ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}`;
   btn.dataset.state = isOn ? '1' : '0';
   if (isOn) {
     btn.classList.remove('outline');
     btn.style.backgroundColor = 'var(--success)';
+    btn.style.color = '#fff';
+    btn.style.borderColor = 'var(--success)';
   } else {
     btn.classList.add('outline');
     btn.style.backgroundColor = 'transparent';
@@ -671,25 +856,80 @@ async function toggleLayer(layer, btn) {
 }
 
 async function fetchPool(elId) {
-  const el = document.getElementById(elId);
-  el.style.display = 'block';
-  el.innerText = 'Загрузка пула...';
-  try { el.innerText = await apiText('pool') || 'Пул пуст'; }
-  catch (e) { el.innerText = 'Ошибка получения пула'; }
+  return loadPoolUI();
+}
+
+async function loadPoolUI() {
+  const el = document.getElementById('dash-pool-ui');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:1rem;color:var(--text-muted)">Загрузка пула…</div>';
+  try {
+    const res = await apiJson('pool');
+    const nodes = (res && res.nodes) ? res.nodes : [];
+    if (!nodes.length) {
+      el.innerHTML = '<div style="padding:1rem">Пул пуст — обновите подписку или включите VPS</div>';
+      return;
+    }
+    el.innerHTML = nodes.map(function (n) {
+      const on = (n.enabled == 1 || n.enabled === true);
+      const delay = (n.delay_ms > 0) ? (n.delay_ms + ' ms') : '—';
+      const id = String(n.id || '').replace(/"/g, '');
+      const tag = String(n.tag || n.id || '?');
+      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;padding:0.65rem 0.85rem;border-bottom:1px solid var(--border);">'
+        + '<div style="min-width:0"><strong style="word-break:break-all">' + tag + '</strong>'
+        + '<div style="font-size:0.8rem;color:var(--text-muted)">' + id + ' · ' + delay + '</div></div>'
+        + '<button class="' + (on ? '' : 'outline') + '" style="flex-shrink:0;margin:0;min-width:4.5rem;background:' + (on ? 'var(--success)' : 'transparent') + '"'
+        + ' onclick="toggleNode(\'' + id + '\',' + (on ? 0 : 1) + ')">' + (on ? 'ВКЛ' : 'ВЫКЛ') + '</button></div>';
+    }).join('');
+    showToast('Пул: ' + nodes.length + ' нод');
+  } catch (e) {
+    el.innerHTML = '<div style="padding:1rem;color:var(--error)">Ошибка пула</div>';
+  }
+}
+
+async function toggleNode(id, enabled) {
+  try {
+    const j = await apiJson('node-set', { id: id, enabled: String(enabled) });
+    if (j && j.error) return showToast('Ошибка: ' + j.error);
+    showToast((enabled == 1 ? 'Включена' : 'Выключена') + ': ' + id);
+    setTimeout(loadPoolUI, 400);
+  } catch (e) { showToast('Не удалось переключить ноду'); }
+}
+
+async function probePoolUI() {
+  showToast('Проверка задержек…');
+  try {
+    await apiJson('pool-probe');
+    setTimeout(loadPoolUI, 4000);
+  } catch (e) { showToast('Ошибка probe'); }
 }
 
 async function fetchSubs() {
   const el = document.getElementById('dash-subs-res');
+  if (!el) { showToast('Откройте вкладку VPN'); return; }
+  el.innerHTML = '<div style="padding:1rem;color:var(--text-muted)">Загрузка подписок…</div>';
   try {
     const res = await apiJson('subs');
     const list = (res && res.subs) ? res.subs : (Array.isArray(res) ? res : []);
     if (list.length > 0) {
-      el.innerHTML = list.map(s => `<div style="padding: 0.75rem; border-bottom: 1px solid var(--border);"><strong>${s.id || 'N/A'}:</strong> <span style="word-break: break-all; color: var(--text-muted); font-size: 0.9rem;">${s.url_show || s.url || ''}</span> · nodes ${s.last_count|0}</div>`).join('');
+      el.innerHTML = list.map(function (s) {
+        const n = (s.last_count != null) ? s.last_count : 0;
+        const en = (s.enabled == 1) ? 'вкл' : 'выкл';
+        return '<div style="padding: 0.75rem; border-bottom: 1px solid var(--border);">'
+          + '<strong>' + (s.id || 'N/A') + '</strong> · ' + en + ' · <b>' + n + ' нод</b><br>'
+          + '<span style="word-break: break-all; color: var(--text-muted); font-size: 0.9rem;">'
+          + (s.url_show || s.url || '(url не задан)') + '</span>'
+          + (s.last_sync ? '<div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.25rem">sync ' + s.last_sync + '</div>' : '')
+          + '</div>';
+      }).join('');
+      showToast('Подписки: ' + list.length);
     } else {
       el.innerHTML = '<div style="padding: 1rem;">Нет настроенных подписок</div>';
+      showToast('Подписок нет');
     }
   } catch (e) {
     el.innerHTML = '<div style="padding: 1rem; color: var(--error);">Ошибка загрузки подписок</div>';
+    showToast('Ошибка подписок');
   }
 }
 
@@ -705,16 +945,27 @@ async function addDomain() {
 }
 
 async function checkUpdate() {
-  try { showToast(await apiText('update-check') || 'Проверка выполнена'); } 
-  catch (e) { showToast('Ошибка проверки обновлений'); }
+  try {
+    const j = await apiJson('update-check');
+    if (!j || j.status === 'error' || j.ok === 0) {
+      showToast((j && j.message) || 'Ошибка проверки обновлений');
+      return;
+    }
+    if (j.has_update == 1) {
+      showToast('Доступно ' + j.remote + ' (сейчас ' + j.current + ', ' + (j.edition || 'standard') + ')');
+    } else {
+      showToast('Актуально: ' + j.current + (j.proxy == 1 ? ' · через VPN' : ''));
+    }
+  } catch (e) { showToast('Ошибка проверки обновлений'); }
 }
 async function doUpdate() {
-  showToast('Запуск обновления. Не отключайте питание...');
-  try { 
-    await apiText('update'); 
-    showToast('Обновление отправлено на выполнение'); 
-  } 
-  catch (e) { showToast('Ошибка при обновлении'); }
+  showToast('Запуск обновления. Не отключайте питание…');
+  try {
+    const j = await apiJson('update');
+    if (j && j.error) showToast('Ошибка: ' + j.error);
+    else showToast('Обновление запущено — через ~1 мин обновите страницу');
+    setTimeout(refreshDashStatus, 15000);
+  } catch (e) { showToast('Ошибка при обновлении'); }
 }
 async function getLog() {
   const el = document.getElementById('sys-log-res');

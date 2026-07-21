@@ -7,6 +7,8 @@ RVPN_COMMON_SOURCED=1
 RVPN_LIB=/usr/lib/rvpn
 RVPN_RULES=/usr/share/rvpn/rules
 RVPN_RUN=/tmp/rvpn
+# nfqws hostlist/pid — world-traversable (nfqws may drop privs; not under RVPN_RUN 700)
+RVPN_NFQ_RUN=${RVPN_NFQ_RUN:-/var/run/rvpn-nfq}
 RVPN_CFG=/etc/config/rvpn
 RVPN_SB_JSON=/tmp/rvpn/sing-box.json
 RVPN_LOG=/tmp/rvpn/rvpn.log
@@ -18,6 +20,8 @@ RVPN_SB_RELOAD_FLOCK=$RVPN_RUN/sb_reload.flock
 
 mkdir -p "$RVPN_RUN" 2>/dev/null || true
 chmod 700 "$RVPN_RUN" 2>/dev/null || true
+mkdir -p "$RVPN_NFQ_RUN" 2>/dev/null || true
+chmod 755 "$RVPN_NFQ_RUN" 2>/dev/null || true
 
 log() {
 	echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >>"$RVPN_LOG"
@@ -329,10 +333,12 @@ dpi_hostlist_merged_file() {
 	if [ -f /usr/lib/rvpn/zapret-strat.sh ]; then
 		# shellcheck source=/dev/null
 		. /usr/lib/rvpn/zapret-strat.sh
-		zapret_hostlist_build "$RVPN_RUN/dpi.merged"
+		zapret_hostlist_build "$RVPN_NFQ_RUN/dpi.merged"
 		return 0
 	fi
-	rules_merge_lists "$RVPN_RUN/dpi.merged" "$RVPN_RULES/dpi.txt" "$RVPN_DPI_USER"
+	mkdir -p "$RVPN_NFQ_RUN" 2>/dev/null || true
+	rules_merge_lists "$RVPN_NFQ_RUN/dpi.merged" "$RVPN_RULES/dpi.txt" "$RVPN_DPI_USER"
+	chmod 644 "$RVPN_NFQ_RUN/dpi.merged" 2>/dev/null || true
 }
 
 games_domains_merged_file() {

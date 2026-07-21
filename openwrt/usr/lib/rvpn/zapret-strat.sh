@@ -42,10 +42,13 @@ zapret_strat_file() {
 }
 
 # Merged hostlist: dpi shipped + user + Flowseal list-general (+ exclude applied via grep -v).
+# Written under RVPN_NFQ_RUN so nobody (nfqws) can read it after priv-drop.
 zapret_hostlist_build() {
 	out=$1
-	[ -n "$out" ] || out=$RVPN_RUN/dpi.merged
-	tmp=$RVPN_RUN/dpi.build.$$
+	[ -n "$out" ] || out=$RVPN_NFQ_RUN/dpi.merged
+	mkdir -p "$RVPN_NFQ_RUN" 2>/dev/null || true
+	chmod 755 "$RVPN_NFQ_RUN" 2>/dev/null || true
+	tmp=$RVPN_NFQ_RUN/dpi.build.$$
 	: >"$tmp"
 	list_domains "$RVPN_RULES/dpi.txt" >>"$tmp" 2>/dev/null || true
 	list_domains "$RVPN_DPI_USER" >>"$tmp" 2>/dev/null || true
@@ -61,6 +64,9 @@ zapret_hostlist_build() {
 	fi
 	awk 'NF && !seen[$0]++' "$tmp" >"$out"
 	rm -f "$tmp"
+	chmod 644 "$out" 2>/dev/null || true
+	# keep a copy for UI/debug under private run dir
+	cp -f "$out" "$RVPN_RUN/dpi.merged" 2>/dev/null || true
 	echo "$out"
 }
 

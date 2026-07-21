@@ -22,3 +22,6 @@ nnmclub.to
 # Fanfiction / AO3
 archiveofourown.org
 ao3.org
+# Exact Moscow time (DPI/TLS drop on WAN; keep DIRECT + nfqws)
+time100.ru
+www.time100.ru

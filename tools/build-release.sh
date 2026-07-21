@@ -31,6 +31,8 @@ fi
 
 mkdir -p "$DIST_DIR" "$OPENWRT_DIR/usr/share/rvpn"
 echo "$VERSION" >"$OPENWRT_DIR/usr/share/rvpn/VERSION"
+# Visible smoke marker after OTA (Status shows version + build)
+echo "${VERSION}-updtest" >"$OPENWRT_DIR/usr/share/rvpn/BUILD"
 
 # Staging copy — never pack gitignored nfqws / raw bats into releases
 STAGE=$DIST_DIR/stage-$$

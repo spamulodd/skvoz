@@ -7,7 +7,7 @@
 NFQWS_BIN=/opt/rvpn/nfqws
 NFQWS_ALT=/usr/bin/nfqws
 ZAP_DIR=/opt/rvpn
-ZAP_PID=$RVPN_RUN/nfqws.pid
+ZAP_PID=$RVPN_NFQ_RUN/nfqws.pid
 
 zapret_bin() {
 	if [ -x "$NFQWS_BIN" ]; then
@@ -52,6 +52,10 @@ zapret_running() {
 	if [ -f "$ZAP_PID" ] && kill -0 "$(cat "$ZAP_PID" 2>/dev/null)" 2>/dev/null; then
 		return 0
 	fi
+	# legacy pid path (pre RVPN_NFQ_RUN)
+	if [ -f "$RVPN_RUN/nfqws.pid" ] && kill -0 "$(cat "$RVPN_RUN/nfqws.pid" 2>/dev/null)" 2>/dev/null; then
+		return 0
+	fi
 	pgrep -f '^/opt/rvpn/nfqws' >/dev/null 2>&1
 }
 
@@ -94,8 +98,10 @@ zapret_start() {
 	zapret_kill_ours
 	sleep 1
 
-	# Build argv from args file
-	set -- --daemon --pidfile="$ZAP_PID" --qnum="$qnum"
+	mkdir -p "$RVPN_NFQ_RUN" 2>/dev/null || true
+	chmod 755 "$RVPN_NFQ_RUN" 2>/dev/null || true
+	# Stay root: nobody cannot read RVPN_RUN(700) or write pid under /var/run
+	set -- --daemon --pidfile="$ZAP_PID" --qnum="$qnum" --uid=0
 	while IFS= read -r a || [ -n "$a" ]; do
 		[ -n "$a" ] || continue
 		set -- "$@" "$a"

@@ -9,35 +9,28 @@ RVPN_NFQWS_FETCH_SOURCED=1
 NFQWS_PENDING=$RVPN_RUN/nfqws_fetch.pending
 
 nfqws_arch_id() {
-	m=$(uname -m 2>/dev/null)
-	case "$m" in
-	aarch64|x86_64|mips|mipsel|armv7l)
-		echo "$m"
-		return 0
-		;;
-	esac
-
+	# Prefer package arch: uname -m is often just "mips" for both endiannesses.
 	a=""
-	if command -v opkg >/dev/null 2>&1; then
-		a=$(opkg print-architecture 2>/dev/null | awk '{print $2}' | grep -E 'mips|arm|aarch64|x86_64' | head -n 1)
-	elif command -v apk >/dev/null 2>&1; then
+	[ -f /etc/openwrt_release ] && . /etc/openwrt_release 2>/dev/null
+	[ -n "${DISTRIB_ARCH:-}" ] && a=$DISTRIB_ARCH
+	if [ -z "$a" ] && command -v apk >/dev/null 2>&1; then
 		a=$(apk --print-arch 2>/dev/null)
 	fi
+	if [ -z "$a" ] && command -v opkg >/dev/null 2>&1; then
+		a=$(opkg print-architecture 2>/dev/null | awk '/^arch /{print $2; exit}')
+	fi
+	[ -z "$a" ] && a=$(uname -m 2>/dev/null)
 
 	case "$a" in
-	*aarch64*) echo "aarch64" ;;
-	*x86_64*) echo "x86_64" ;;
-	*mipsel*) echo "mipsel" ;;
-	*mips*) echo "mips" ;;
-	*armv7*) echo "armv7l" ;;
-	*arm*) echo "armv7l" ;;
-	*)
-		case "$m" in
-		*mips64*) echo "mips" ;;
-		*mips*) echo "mips" ;;
-		*) echo "$m" ;;
-		esac
-		;;
+	*mipsel*|*mips_24kc*|*mips32el*) echo "mipsel" ;;
+	*mips64*|*mips*) echo "mips" ;;
+	*aarch64*|*arm64*) echo "aarch64" ;;
+	*x86_64*|*amd64*) echo "x86_64" ;;
+	*armv7*|*arm_cortex*|*arm_neon*) echo "armv7l" ;;
+	mipsel) echo "mipsel" ;;
+	mips) echo "mips" ;;
+	aarch64|x86_64|armv7l) echo "$a" ;;
+	*) echo "$a" ;;
 	esac
 }
 

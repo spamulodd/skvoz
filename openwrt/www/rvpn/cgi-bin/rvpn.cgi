@@ -36,13 +36,15 @@ require_auth() {
 		echo '{"error":"no_ui_secret"}'
 		exit 0
 	}
-	# Prefer Cookie / header (less log leakage); query token remains fallback for uhttpd.
-	got=
-	if [ -n "$HTTP_COOKIE" ]; then
+	# Query token is primary: OpenWrt uhttpd often does not expose custom headers to CGI.
+	# Cookie / X-Skvoz-Token are optional extras when the frontend can set them.
+	got=$(get_arg token)
+	if [ -z "$got" ] && [ -n "$HTTP_COOKIE" ]; then
 		got=$(echo "$HTTP_COOKIE" | tr ';' '\n' | sed -n 's/^[[:space:]]*skvoz_token=//p' | head -1)
 	fi
 	[ -z "$got" ] && got=$HTTP_X_SKVOZ_TOKEN
-	[ -z "$got" ] && got=$(get_arg token)
+	# strip CR/whitespace from cookie/header
+	got=$(printf '%s' "$got" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 	if [ -z "$got" ] || [ "$got" != "$want" ]; then
 		echo "Status: 401 Unauthorized"
 		json_hdr
@@ -187,6 +189,21 @@ domains)
 	json_hdr
 	ui_domains_json
 	;;
+domains-text)
+	require_auth
+	layer=$(get_arg layer)
+	[ -n "$layer" ] || layer=vpn
+	json_hdr
+	ui_domains_text "$layer"
+	;;
+domains-set)
+	require_auth
+	layer=$(get_arg layer)
+	[ -n "$layer" ] || layer=vpn
+	text=$(urldecode "$(get_arg text)")
+	json_hdr
+	ui_domains_set "$layer" "$text" || echo '{"error":"bad_list"}'
+	;;
 add-domain)
 	require_auth
 	raw=$(urldecode "$(get_arg domain)")
@@ -280,10 +297,14 @@ sub-set)
 		echo '{"error":"bad_id"}'
 		exit 0
 	fi
-	# Only mutate existing subscription sections — never create/overwrite main/nodes
+	# Create subscription section if missing (wizard "name" field used to 404)
 	if ! uci_is_subscription "$sid"; then
-		echo '{"error":"not_subscription"}'
-		exit 0
+		uci set "rvpn.${sid}=subscription"
+		uci set "rvpn.${sid}.enabled=0"
+		uci set "rvpn.${sid}.ua=clash.meta"
+		uci set "rvpn.${sid}.refresh_hours=12"
+		uci set "rvpn.${sid}.max_nodes=24"
+		uci set "rvpn.${sid}.prefer=vless-reality,hysteria2,trojan,vless-ws,vless-grpc,vless,ss"
 	fi
 	url=$(urldecode "$(get_arg url)")
 	en=$(get_arg enabled)
@@ -292,8 +313,9 @@ sub-set)
 			echo '{"error":"bad_url"}'
 			exit 0
 		fi
-		# sid/url validated — safe in double quotes for uci
 		uci set "rvpn.${sid}.url=$url"
+		# URL set ⇒ enable unless explicitly disabled
+		[ -n "$en" ] || en=1
 	fi
 	if [ -n "$en" ]; then
 		uci set "rvpn.${sid}.enabled=$(norm_bool "$en")"
@@ -304,30 +326,50 @@ sub-set)
 sub-refresh)
 	require_auth
 	sid=$(urldecode "$(get_arg id)")
+	[ -n "$sid" ] || sid=sub1
 	json_hdr
-	if [ -n "$sid" ]; then
-		if ! valid_uci_name "$sid" || ! uci_is_subscription "$sid"; then
-			echo '{"error":"bad_id"}'
-			exit 0
-		fi
-		# Pass sid as argv — never interpolate into sh -c string
-		(
-			rvpn_with_lock /bin/sh -c '
-				. /usr/lib/rvpn/sub.sh
-				sub_refresh "$1"
-			' sh "$sid" >>"$RVPN_LOG" 2>&1
-		) &
-	else
-		(
-			rvpn_with_lock /bin/sh -c '. /usr/lib/rvpn/sub.sh; sub_refresh_all' >>"$RVPN_LOG" 2>&1
-		) &
+	if ! valid_uci_name "$sid" || ! uci_is_subscription "$sid"; then
+		echo '{"error":"bad_id"}'
+		exit 0
 	fi
-	echo '{"ok":1,"async":1}'
+	# Ensure enabled before refresh so sub_refresh does not no-op
+	uci set "rvpn.${sid}.enabled=1"
+	uci commit rvpn
+	(
+		rvpn_with_lock /bin/sh -c '
+			. /usr/lib/rvpn/sub.sh
+			sub_refresh "$1"
+		' sh "$sid" >>"$RVPN_LOG" 2>&1
+	) &
+	echo '{"ok":1,"async":1,"id":"'"$sid"'"}'
 	;;
 pool)
 	require_auth
 	json_hdr
 	ui_pool_json
+	;;
+node-set)
+	require_auth
+	json_hdr
+	nid=$(urldecode "$(get_arg id)")
+	en=$(norm_bool "$(get_arg enabled)")
+	if ! valid_uci_name "$nid"; then
+		echo '{"error":"bad_id"}'
+		exit 0
+	fi
+	if ! uci -q show "rvpn.$nid" 2>/dev/null | grep -q "^rvpn\\.$nid=node$"; then
+		echo '{"error":"not_node"}'
+		exit 0
+	fi
+	uci set "rvpn.${nid}.enabled=$en"
+	uci commit rvpn
+	(
+		rvpn_with_lock /bin/sh -c '
+			. /usr/lib/rvpn/singbox.sh
+			sb_reload_domains || true
+		' >>"$RVPN_LOG" 2>&1
+	) &
+	printf '{"ok":1,"id":"%s","enabled":%s,"async":1}\n' "$(json_escape "$nid")" "$en"
 	;;
 pool-probe)
 	require_auth
@@ -452,9 +494,14 @@ wifi-qr)
 update-check)
 	require_auth
 	json_hdr
+	# Always emit JSON (uhttpd Bad Gateway if script dies on CRLF / hang)
+	if [ ! -f /usr/lib/rvpn/update.sh ]; then
+		echo '{"ok":0,"status":"error","message":"update.sh missing","has_update":0}'
+		exit 0
+	fi
 	# shellcheck source=/dev/null
 	. /usr/lib/rvpn/update.sh
-	update_check_json
+	update_check_json || echo '{"ok":0,"status":"error","message":"update_check failed","has_update":0}'
 	;;
 update)
 	require_auth
@@ -472,6 +519,11 @@ nfqws-fetch)
 	json_hdr
 	echo '{"ok":1,"async":1}'
 	;;
+vps-get)
+	require_auth
+	json_hdr
+	ui_vps_json
+	;;
 vps-set)
 	require_auth
 	json_hdr
@@ -479,21 +531,24 @@ vps-set)
 	port=$(get_arg port)
 	password=$(urldecode "$(get_arg password)")
 	sni=$(urldecode "$(get_arg sni)")
+	insecure=$(get_arg insecure)
 	[ -n "$sni" ] || sni=bing.com
 	case "$port" in ''|*[!0-9]*) port=433 ;; esac
 	if [ -z "$server" ] || [ -z "$password" ]; then
 		echo '{"error":"need_server_password"}'
 		exit 0
 	fi
+	[ -n "$insecure" ] || insecure=$(uci -q get rvpn.vps_hy2.insecure)
+	case "$insecure" in 0) insecure=0 ;; *) insecure=1 ;; esac
 	uci set rvpn.vps_hy2=node
 	uci set rvpn.vps_hy2.enabled='1'
-	uci set rvpn.vps_hy2.tag='vps-hy2'
+	uci set rvpn.vps_hy2.tag='vps-fi-hy2'
 	uci set rvpn.vps_hy2.type='hysteria2'
 	uci set rvpn.vps_hy2.server="$server"
 	uci set rvpn.vps_hy2.port="$port"
 	uci set rvpn.vps_hy2.password="$password"
 	uci set rvpn.vps_hy2.sni="$sni"
-	uci set rvpn.vps_hy2.insecure='0'
+	uci set rvpn.vps_hy2.insecure="$insecure"
 	uci set rvpn.main.vpn_enabled='1'
 	uci commit rvpn
 	svc_async restart
@@ -503,6 +558,24 @@ vps-set)
 		zapret_after_vpn_ready >>"$RVPN_LOG" 2>&1 || true
 	) &
 	echo '{"ok":1,"async":1,"vpn_enabled":1}'
+	;;
+vps-enable)
+	require_auth
+	json_hdr
+	if [ -z "$(uci -q get rvpn.vps_hy2.server)" ]; then
+		echo '{"error":"no_vps"}'
+		exit 0
+	fi
+	uci set rvpn.vps_hy2.enabled='1'
+	uci set rvpn.main.vpn_enabled='1'
+	if [ "$(get_arg solo)" = "1" ]; then
+		for sid in $(uci -q show rvpn | sed -n 's/^rvpn\.\([^=]*\)=subscription$/\1/p'); do
+			uci set "rvpn.${sid}.enabled=0"
+		done
+	fi
+	uci commit rvpn
+	svc_async restart
+	echo '{"ok":1,"async":1,"vpn_enabled":1,"mode":"vps"}'
 	;;
 *)
 	text_hdr

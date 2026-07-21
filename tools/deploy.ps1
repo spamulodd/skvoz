@@ -40,8 +40,15 @@ function Send-TextFile([string]$LocalPath, [string]$RemotePath) {
 Write-Host "Preparing remote dirs..."
 Invoke-Router "mkdir -p /usr/lib/rvpn /usr/share/rvpn/rules /usr/share/rvpn/bin /opt/rvpn /www/rvpn/cgi-bin /tmp/rvpn /etc/config"
 
+# Never overwrite live /etc/config/rvpn (secrets + toggles). Seed only if missing.
+$cfgLocal = Join-Path $OpenWrt "etc\config\rvpn"
+$cfgExists = (& $Plink -batch -ssh "$User@$RouterHost" -pw $Password "test -f /etc/config/rvpn && echo yes || echo no")
+if ($cfgExists -match "no" -and (Test-Path $cfgLocal)) {
+  Write-Host "Seed /etc/config/rvpn (missing on router)"
+  Send-TextFile $cfgLocal "/etc/config/rvpn"
+}
+
 $files = @(
-  @{ L = "etc\config\rvpn"; R = "/etc/config/rvpn" },
   @{ L = "etc\init.d\rvpn"; R = "/etc/init.d/rvpn" },
   @{ L = "usr\bin\rvpnctl"; R = "/usr/bin/rvpnctl" },
   @{ L = "usr\lib\rvpn\common.sh"; R = "/usr/lib/rvpn/common.sh" },
@@ -153,9 +160,10 @@ $remoteSetup = @'
 chmod +x /etc/init.d/rvpn /usr/bin/rvpnctl /www/rvpn/cgi-bin/rvpn.cgi /usr/lib/rvpn/*.sh
 # deps for nfqws (ignore if already present)
 apk add libnetfilter-queue1 libnfnetlink0 kmod-nfnetlink-queue kmod-nft-queue kmod-nft-tproxy kmod-nft-socket 2>/dev/null || true
-# fresh deploy leaves switches OFF for safety
-uci set rvpn.main.zapret_enabled=0
-uci set rvpn.main.vpn_enabled=0
+# Preserve existing layer toggles (do not wipe live config)
+zap=$(uci -q get rvpn.main.zapret_enabled || echo 0)
+vpn=$(uci -q get rvpn.main.vpn_enabled || echo 0)
+uci -q get rvpn.main.zapret_strategy >/dev/null || uci set rvpn.main.zapret_strategy=general_alt11
 uci commit rvpn
 
 # uhttpd instance for UI
@@ -164,7 +172,7 @@ uci set uhttpd.rvpn=uhttpd
 uci set uhttpd.rvpn.listen_http='0.0.0.0:81'
 uci set uhttpd.rvpn.home='/www/rvpn'
 uci set uhttpd.rvpn.cgi_prefix='/cgi-bin'
-uci set uhttpd.rvpn.script_timeout='120'
+uci set uhttpd.rvpn.script_timeout='180'
 uci set uhttpd.rvpn.network_timeout='60'
 uci set uhttpd.rvpn.tcp_keepalive='1'
 uci set uhttpd.rvpn.rfc1918_filter='0'
@@ -172,12 +180,23 @@ uci set uhttpd.rvpn.max_requests='40'
 uci commit uhttpd
 /etc/init.d/uhttpd restart
 /etc/init.d/rvpn enable
-/etc/init.d/rvpn stop
-echo DEPLOY_OK
+mkdir -p /var/run/rvpn-nfq
+chmod 755 /var/run/rvpn-nfq
+# restore toggles then restart if any layer was on
+uci set rvpn.main.zapret_enabled="$zap"
+uci set rvpn.main.vpn_enabled="$vpn"
+uci commit rvpn
+if [ "$zap" = 1 ] || [ "$vpn" = 1 ]; then
+  /etc/init.d/rvpn restart
+else
+  /etc/init.d/rvpn stop
+fi
+echo "DEPLOY_OK zap=$zap vpn=$vpn"
 ping -c1 -W2 192.168.100.1 >/dev/null && echo WAN_OK || ping -c1 -W2 1.1.1.1 >/dev/null && echo WAN_OK || echo WAN_BAD
 which sing-box
 sing-box version 2>/dev/null | head -1
-ls -la /opt/rvpn /usr/share/rvpn/bin 2>/dev/null
+ls -la /opt/rvpn /usr/share/rvpn/bin /var/run/rvpn-nfq 2>/dev/null
+pgrep -a nfqws || true
 '@
 
 # send setup via base64 too
@@ -187,6 +206,5 @@ Send-TextFile $setupPath "/tmp/rvpn-remote-setup.sh"
 Invoke-Router "sh /tmp/rvpn-remote-setup.sh"
 
 Write-Host ""
-Write-Host "Done. UI: http://$RouterHost`:81/  (both toggles OFF)"
-Write-Host "Next: put nfqws (mipsel) to /opt/rvpn/nfqws then: rvpnctl enable-zapret"
-Write-Host "VPN: rvpnctl enable-vpn"
+Write-Host "Done. UI: http://$RouterHost`:81/"
+Write-Host "Layer toggles preserved; nfqws hostlist under /var/run/rvpn-nfq"

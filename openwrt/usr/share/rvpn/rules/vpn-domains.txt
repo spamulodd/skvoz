@@ -7,6 +7,7 @@ githubusercontent.com
 githubassets.com
 github.io
 # --- Google + YouTube (apex; mtalk* stays games DIRECT — Rockstar Social Club) ---
+# time100.ru → dpi.txt only (RU site; foreign VPN exits get TLS EOF)
 google.com
 googleapis.com
 gstatic.com

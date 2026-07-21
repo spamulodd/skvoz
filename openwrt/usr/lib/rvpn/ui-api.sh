@@ -273,6 +273,119 @@ ui_domains_json() {
 	echo
 }
 
+ui_domains_file_for_layer() {
+	case "$1" in
+	vpn|user) echo "$RVPN_USER_DOMAINS" ;;
+	zapret|dpi) echo "$RVPN_DPI_USER" ;;
+	games|direct) echo "$RVPN_GAMES_USER" ;;
+	allow|adblock-allow) echo "$RVPN_ADBLOCK_ALLOW" ;;
+	vpn-shipped|vpn_shipped) echo "$RVPN_RULES/vpn-domains.txt" ;;
+	dpi-shipped|zapret-shipped|dpi_shipped) echo "$RVPN_RULES/dpi.txt" ;;
+	games-shipped|games_shipped) echo "$RVPN_RULES/games-domains.txt" ;;
+	*) return 1 ;;
+	esac
+}
+
+ui_domains_text() {
+	layer=$1
+	f=$(ui_domains_file_for_layer "$layer") || {
+		echo '{"error":"bad_layer"}'
+		return 1
+	}
+	hdr="# User list ($layer). One domain per line."
+	case "$layer" in
+	vpn|user) hdr="# User VPN domains (quick-add / editor). Merged with vpn-domains.txt." ;;
+	zapret|dpi) hdr="# User DPI hostlist. Merged with dpi.txt." ;;
+	games|direct) hdr="# User games DIRECT. Merged with games-domains.txt." ;;
+	allow|adblock-allow) hdr="# Adblock allowlist." ;;
+	esac
+	echo -n '{"ok":1,"layer":"'
+	printf '%s' "$(json_escape "$layer")"
+	echo -n '","text":"'
+	{
+		[ -f "$f" ] && list_domains "$f"
+	} | awk 'BEGIN{first=1} NF{
+		gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\r/,"");
+		if(!first) printf "\\n"; first=0; printf "%s",$0
+	}'
+	echo '"}'
+}
+
+ui_domains_set() {
+	layer=$1
+	text=$2
+	f=$(ui_domains_file_for_layer "$layer") || return 1
+	mkdir -p "$(dirname "$f")" "$RVPN_RUN"
+	tmp=$RVPN_RUN/domains-set.$$
+	: >"$tmp"
+	n=0
+	# Accept newlines / commas / spaces
+	printf '%s\n' "$text" | tr ',;' '\n\n' | while IFS= read -r line || [ -n "$line" ]; do
+		line=$(printf '%s' "$line" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+		[ -n "$line" ] || continue
+		case "$line" in \#*) continue ;; esac
+		d=$(normalize_domain "$line" 2>/dev/null) || continue
+		valid_domain_token "$d" 2>/dev/null || continue
+		printf '%s\n' "$d"
+	done | awk 'NF && !seen[$0]++' >"$tmp"
+	n=$(wc -l <"$tmp" | tr -d ' ')
+	case "$n" in ''|*[!0-9]*) n=0 ;; esac
+	hdr="# User list ($layer) — edited from UI."
+	{
+		echo "$hdr"
+		cat "$tmp"
+	} >"$f"
+	rm -f "$tmp"
+	chmod 644 "$f" 2>/dev/null || true
+	case "$layer" in
+	vpn|user|games|direct|vpn-shipped|vpn_shipped|games-shipped|games_shipped)
+		. /usr/lib/rvpn/singbox.sh 2>/dev/null || true
+		sb_reload_domains >/dev/null 2>&1 || true
+		;;
+	zapret|dpi|dpi-shipped|zapret-shipped|dpi_shipped)
+		if [ "$(uci_get zapret_enabled)" = "1" ]; then
+			rvpn_with_lock /bin/sh -c '. /usr/lib/rvpn/zapret.sh; zapret_start' >>"$RVPN_LOG" 2>&1 || true
+		fi
+		;;
+	allow|adblock-allow)
+		if [ "$(uci_get adblock_enabled)" = "1" ]; then
+			. /usr/lib/rvpn/adblock.sh
+			adblock_apply >/dev/null 2>&1 || true
+		fi
+		;;
+	esac
+	printf '{"ok":1,"layer":"%s","count":%s}\n' "$(json_escape "$layer")" "$n"
+}
+
+ui_vps_json() {
+	server=$(uci -q get rvpn.vps_hy2.server)
+	port=$(uci -q get rvpn.vps_hy2.port)
+	password=$(uci -q get rvpn.vps_hy2.password)
+	sni=$(uci -q get rvpn.vps_hy2.sni)
+	insecure=$(uci -q get rvpn.vps_hy2.insecure)
+	en=$(uci -q get rvpn.vps_hy2.enabled)
+	tag=$(uci -q get rvpn.vps_hy2.tag)
+	type=$(uci -q get rvpn.vps_hy2.type)
+	vpn=$(uci_get vpn_enabled)
+	case "$en" in 1) en=1 ;; *) en=0 ;; esac
+	case "$insecure" in 1) insecure=1 ;; *) insecure=0 ;; esac
+	case "$vpn" in 1) vpn=1 ;; *) vpn=0 ;; esac
+	[ -n "$port" ] || port=433
+	[ -n "$sni" ] || sni=bing.com
+	[ -n "$type" ] || type=hysteria2
+	[ -n "$tag" ] || tag=vps-fi-hy2
+	printf '{"ok":1,"configured":%s,"enabled":%s,"vpn_enabled":%s,"tag":"%s","type":"%s","server":"%s","port":"%s","password":"%s","sni":"%s","insecure":%s}\n' \
+		"$([ -n "$server" ] && echo 1 || echo 0)" \
+		"$en" "$vpn" \
+		"$(json_escape "$tag")" \
+		"$(json_escape "$type")" \
+		"$(json_escape "$server")" \
+		"$(json_escape "$port")" \
+		"$(json_escape "$password")" \
+		"$(json_escape "$sni")" \
+		"$insecure"
+}
+
 ui_route_add() {
 	layer=$1
 	raw=$2
