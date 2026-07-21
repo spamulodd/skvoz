@@ -75,22 +75,22 @@ sb_generate() {
 	ut_url=$(uci_get urltest_url)
 	[ -n "$ut_url" ] || ut_url=https://www.gstatic.com/generate_204
 	ut_iv=$(uci_get urltest_interval)
-	[ -n "$ut_iv" ] || ut_iv=5m
+	[ -n "$ut_iv" ] || ut_iv=2m
 	case "$ut_iv" in
-	*[!A-Za-z0-9.]*) ut_iv=5m ;;
+	*[!A-Za-z0-9.]*) ut_iv=2m ;;
 	esac
 	ut_tol=$(uci_get urltest_tolerance)
-	[ -n "$ut_tol" ] || ut_tol=150
+	[ -n "$ut_tol" ] || ut_tol=100
 	case "$ut_tol" in
-	''|*[!0-9]*) ut_tol=150 ;;
+	''|*[!0-9]*) ut_tol=100 ;;
 	esac
-	# HY2 bandwidth hints (mbps) — help congestion control use full link; 0 = omit
+	# HY2 bandwidth hints (mbps). Default 0 = omit — wrong values hurt CC badly.
 	hy2_up=$(uci_get hy2_up_mbps)
 	hy2_down=$(uci_get hy2_down_mbps)
-	[ -n "$hy2_up" ] || hy2_up=1000
-	[ -n "$hy2_down" ] || hy2_down=1000
-	case "$hy2_up" in ''|*[!0-9]*) hy2_up=1000 ;; esac
-	case "$hy2_down" in ''|*[!0-9]*) hy2_down=1000 ;; esac
+	[ -n "$hy2_up" ] || hy2_up=0
+	[ -n "$hy2_down" ] || hy2_down=0
+	case "$hy2_up" in ''|*[!0-9]*) hy2_up=0 ;; esac
+	case "$hy2_down" in ''|*[!0-9]*) hy2_down=0 ;; esac
 	ll=$(uci_get log_level)
 	case "$ll" in
 	trace|debug|info|warn|error|fatal|panic) ;;
@@ -383,10 +383,11 @@ sb_generate() {
   "route": {
     "default_domain_resolver": "local",
     "rules": [
-      {"protocol": "dns", "action": "hijack-dns"},
-      {"ip_is_private": true, "outbound": "direct"},
+      {"inbound": ["dns-in"], "action": "hijack-dns"},
       {"ip_cidr": $ip_route_json, "outbound": "rvpn-urltest"},
       {"action": "sniff", "sniffer": ["http", "tls", "quic", "dns"], "timeout": "200ms"},
+      {"protocol": "dns", "action": "hijack-dns"},
+      {"ip_is_private": true, "outbound": "direct"},
       {"domain_suffix": $games_dom, "outbound": "direct"},
       {"domain_suffix": $vpn_dom, "outbound": "rvpn-urltest"}
     ],

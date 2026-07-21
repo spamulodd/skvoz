@@ -598,6 +598,11 @@ update)
 	update_status_set running "queued"
 	(
 		rvpn_with_lock /bin/sh -c '. /usr/lib/rvpn/update.sh; update_run' >>"$RVPN_LOG" 2>&1
+		# Restart AFTER lock — apply new sing-box.json (OTA used to leave stale config)
+		if [ -f /tmp/rvpn/update.restart ]; then
+			rm -f /tmp/rvpn/update.restart
+			RVPN_CLEAR_HOLD=1 /etc/init.d/rvpn restart >>"$RVPN_LOG" 2>&1 || true
+		fi
 	) &
 	json_hdr
 	echo '{"ok":1,"async":1}'

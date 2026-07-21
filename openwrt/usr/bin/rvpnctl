@@ -203,6 +203,10 @@ update-status)
 	;;
 update)
 	update_run || { echo FAIL; exit 1; }
+	if [ -f "$RVPN_RUN/update.restart" ]; then
+		rm -f "$RVPN_RUN/update.restart"
+		RVPN_CLEAR_HOLD=1 /etc/init.d/rvpn restart || true
+	fi
 	;;
 selftest)
 	selftest_run

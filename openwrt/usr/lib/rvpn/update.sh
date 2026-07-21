@@ -456,6 +456,8 @@ EOF
 
 	newver=$(update_current_version)
 	rm -rf "$tmp_dir"
+	# Caller restarts after lock release (see CGI/rvpnctl) — avoids deadlock
+	: >"$RVPN_RUN/update.restart"
 
 	update_status_set ok "update successful" "version=$newver"
 	printf '{"status":"ok","message":"update successful","files":[%s]}\n' "$written_files"

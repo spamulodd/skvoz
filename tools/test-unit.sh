@@ -201,22 +201,31 @@ grep -E '^[[:space:]]*time100\.ru[[:space:]]*$' "$ROOT/openwrt/usr/share/rvpn/ru
 grep -q 'time100.ru' "$ROOT/openwrt/usr/share/rvpn/rules/dpi.txt" \
 	&& ok "time100.ru in dpi.txt" || bad "time100.ru missing from dpi"
 
-# --- sing-box TG speed: ip_cidr before sniff, domain after sniff, short timeout ---
+# --- sing-box TG speed: FakeIP/CIDR before sniff; dns-in hijack first ---
+grep -q '"inbound": \["dns-in"\]' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
+	&& ok "dns-in hijack first" || bad "dns-in hijack missing"
 grep -q '"ip_cidr".*"outbound": "rvpn-urltest"' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
 	&& ok "singbox ip_cidr vpn route" || bad "singbox ip_cidr route"
 grep -q '"timeout": "200ms"' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
 	&& ok "singbox sniff 200ms" || bad "singbox sniff timeout"
-before=$(grep -n 'ip_cidr' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" | head -1 | cut -d: -f1)
+din=$(grep -n '"inbound": \["dns-in"\]' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" | head -1 | cut -d: -f1)
+before=$(grep -n '"ip_cidr": \$ip_route_json' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" | head -1 | cut -d: -f1)
 after=$(grep -n '"action": "sniff"' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" | head -1 | cut -d: -f1)
-dom=$(grep -n 'domain_suffix.*vpn_dom.*"outbound": "rvpn-urltest"' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" | head -1 | cut -d: -f1)
+priv=$(grep -n 'ip_is_private' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" | head -1 | cut -d: -f1)
+[ -n "$din" ] && [ -n "$before" ] && [ "$din" -lt "$before" ] \
+	&& ok "dns-in before ip_cidr" || bad "dns-in order"
 [ -n "$before" ] && [ -n "$after" ] && [ "$before" -lt "$after" ] \
 	&& ok "ip_cidr before sniff" || bad "ip_cidr after sniff"
-[ -n "$dom" ] && [ -n "$after" ] && [ "$dom" -gt "$after" ] \
-	&& ok "domain after sniff (SNI fallback)" || bad "domain not after sniff"
+[ -n "$after" ] && [ -n "$priv" ] && [ "$after" -lt "$priv" ] \
+	&& ok "sniff before ip_is_private" || bad "private before sniff"
 grep -q 'up_mbps' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
 	&& ok "HY2 bandwidth hints" || bad "HY2 bandwidth hints"
-grep -q "urltest_interval '5m'" "$ROOT/openwrt/etc/config/rvpn" \
-	&& ok "urltest default 5m" || bad "urltest interval default"
+grep -q "hy2_up_mbps '0'" "$ROOT/openwrt/etc/config/rvpn" \
+	&& ok "HY2 bw default omit" || bad "HY2 bw default"
+grep -q "urltest_interval '2m'" "$ROOT/openwrt/etc/config/rvpn" \
+	&& ok "urltest default 2m" || bad "urltest interval default"
+grep -q 'update.restart' "$ROOT/openwrt/usr/lib/rvpn/update.sh" \
+	&& ok "OTA flags restart" || bad "OTA no restart flag"
 
 # --- nft QUIC skips vpn_cidr (TG real IPs) ---
 grep -q 'ip daddr @vpn_cidr accept' "$ROOT/openwrt/usr/lib/rvpn/nft.sh" \

@@ -131,9 +131,16 @@ dns_clear_fakeip_upstream() {
 	else
 		uci -q delete dhcp.@dnsmasq[0].server
 	fi
-	if [ -f "$DNS_BACKUP.noresolv" ]; then
+	# If no custom upstream servers, never leave noresolv=1 (REFUSED / blackhole)
+	srv_left=$(uci -q get dhcp.@dnsmasq[0].server 2>/dev/null || true)
+	if [ -z "$srv_left" ]; then
+		uci -q delete dhcp.@dnsmasq[0].noresolv
+	elif [ -f "$DNS_BACKUP.noresolv" ]; then
 		nr=$(cat "$DNS_BACKUP.noresolv" 2>/dev/null)
-		if [ -n "$nr" ]; then
+		# Ignore poisoned backup that still says noresolv=1 from FakeIP era
+		if [ "$nr" = "1" ]; then
+			uci -q delete dhcp.@dnsmasq[0].noresolv
+		elif [ -n "$nr" ]; then
 			uci set dhcp.@dnsmasq[0].noresolv="$nr"
 		else
 			uci -q delete dhcp.@dnsmasq[0].noresolv
