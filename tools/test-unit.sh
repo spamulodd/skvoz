@@ -183,9 +183,17 @@ reject_rel() {
 reject_rel '../etc/passwd' && ok "reject .. path" || bad "reject .. path"
 reject_rel 'usr/lib/rvpn/x.sh' && bad "false reject good path" || ok "allow good path"
 
-# --- Patreon in VPN list ---
-grep -q 'patreon.com' "$ROOT/openwrt/usr/share/rvpn/rules/vpn-domains.txt" \
-	&& ok "patreon in vpn-domains" || bad "patreon missing"
+grep -q 'patreon.com' "$ROOT/openwrt/usr/share/rvpn/rules/patreon-domains.txt" \
+	&& ok "patreon domains file" || bad "patreon-domains missing"
+grep -E '^[[:space:]]*patreon\.com[[:space:]]*$' "$ROOT/openwrt/usr/share/rvpn/rules/vpn-domains.txt" \
+	&& bad "patreon still in vpn-domains (urltest)" || ok "patreon not in vpn-domains urltest"
+grep -q 'sb_register_tag' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
+	&& ok "patreon dedicated outbound" || bad "patreon route missing"
+grep -q 'patreon_dom.*"server": "fakeip"' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
+	&& ok "patreon FakeIP dns" || bad "patreon not FakeIP"
+# Early ip_cidr must not bundle FakeIP with vpn_cidr (breaks Patreon domain route)
+grep -q 'ip_route_json=\[\\"\$fake' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
+	&& bad "FakeIP still in early ip_cidr" || ok "FakeIP after sniff"
 
 # --- Telegram: VPN lists, not games/dpi; time100 stays off VPN ---
 grep -q 'cdn-telegram.org' "$ROOT/openwrt/usr/share/rvpn/rules/vpn-domains.txt" \
@@ -208,23 +216,28 @@ grep -E '^[[:space:]]*(itunes\.apple\.com|mzstatic\.com|music\.apple\.com)[[:spa
 grep -q 'push.apple.com' "$ROOT/openwrt/usr/share/rvpn/rules/vpn-domains.txt" \
 	&& ok "APNs push on VPN" || bad "push.apple.com missing"
 
-# --- sing-box TG speed: FakeIP/CIDR before sniff; dns-in hijack first ---
+# --- sing-box: dns-in first; vpn_cidr early; FakeIP after sniff (Patreon domain route) ---
 grep -q '"inbound": \["dns-in"\]' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
 	&& ok "dns-in hijack first" || bad "dns-in hijack missing"
-grep -q '"ip_cidr".*"outbound": "rvpn-urltest"' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
-	&& ok "singbox ip_cidr vpn route" || bad "singbox ip_cidr route"
+grep -q 'early_ip_rule=' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
+	&& ok "singbox early vpn_cidr route" || bad "singbox early ip route"
+grep -q 'fake_catch_json' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
+	&& ok "singbox FakeIP catch after sniff" || bad "FakeIP catch missing"
 grep -q '"timeout": "200ms"' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
 	&& ok "singbox sniff 200ms" || bad "singbox sniff timeout"
 din=$(grep -n '"inbound": \["dns-in"\]' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" | head -1 | cut -d: -f1)
-before=$(grep -n '"ip_cidr": \$ip_route_json' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" | head -1 | cut -d: -f1)
-after=$(grep -n '"action": "sniff"' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" | head -1 | cut -d: -f1)
+sniff=$(grep -n '"action": "sniff"' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" | head -1 | cut -d: -f1)
+pat=$(grep -n 'patreon_dom.*"outbound"' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" | head -1 | cut -d: -f1)
+fake=$(grep -n 'fake_catch_json' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" | tail -1 | cut -d: -f1)
 priv=$(grep -n 'ip_is_private' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" | head -1 | cut -d: -f1)
-[ -n "$din" ] && [ -n "$before" ] && [ "$din" -lt "$before" ] \
-	&& ok "dns-in before ip_cidr" || bad "dns-in order"
-[ -n "$before" ] && [ -n "$after" ] && [ "$before" -lt "$after" ] \
-	&& ok "ip_cidr before sniff" || bad "ip_cidr after sniff"
-[ -n "$after" ] && [ -n "$priv" ] && [ "$after" -lt "$priv" ] \
-	&& ok "sniff before ip_is_private" || bad "private before sniff"
+[ -n "$din" ] && [ -n "$sniff" ] && [ "$din" -lt "$sniff" ] \
+	&& ok "dns-in before sniff" || bad "dns-in order"
+[ -n "$sniff" ] && [ -n "$pat" ] && [ "$sniff" -lt "$pat" ] \
+	&& ok "sniff before patreon route" || bad "patreon before sniff"
+[ -n "$pat" ] && [ -n "$fake" ] && [ "$pat" -lt "$fake" ] \
+	&& ok "patreon before FakeIP catchall" || bad "FakeIP catch before patreon"
+[ -n "$fake" ] && [ -n "$priv" ] && [ "$fake" -lt "$priv" ] \
+	&& ok "FakeIP before ip_is_private" || bad "private before FakeIP"
 grep -q 'up_mbps' "$ROOT/openwrt/usr/lib/rvpn/singbox.sh" \
 	&& ok "HY2 bandwidth hints" || bad "HY2 bandwidth hints"
 grep -q "hy2_up_mbps '0'" "$ROOT/openwrt/etc/config/rvpn" \

@@ -147,10 +147,7 @@ immunefi.com
 dev-c.com
 # Rockstar Launcher: NOT FakeIP — dead mux.* names become FakeIP blackholes and hang the app.
 # See games-domains.txt + dpi.txt (DIRECT + zapret).
-# --- Patreon ---
-patreon.com
-patreonusercontent.com
-patreoncommunity.com
+# Patreon: see patreon-domains.txt (dedicated node role=patreon — not FakeIP/urltest).
 # --- Apple: App Store MUST stay DIRECT. Only APNs via VPN (ISP often NXDOMAIN on push) ---
 push.apple.com
 # NOT VPN: itunes.apple.com, mzstatic.com, apps.apple.com, music.apple.com

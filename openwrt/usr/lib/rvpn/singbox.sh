@@ -109,13 +109,18 @@ sb_generate() {
 	vpn_dom=$(sb_build_json_array "$merged")
 	games_merged=$(games_domains_merged_file)
 	games_dom=$(sb_build_json_array "$games_merged")
+	patreon_file=$RVPN_RULES/patreon-domains.txt
+	patreon_dom='[]'
+	[ -f "$patreon_file" ] && patreon_dom=$(sb_build_json_array "$patreon_file")
 	vpn_cidr='[]'
 	[ -f "$RVPN_RULES/vpn-cidr.txt" ] && vpn_cidr=$(sb_build_cidr_json_array "$RVPN_RULES/vpn-cidr.txt")
 
 	outbounds_tmp="$RVPN_RUN/outbounds.jsonl"
 	tags_tmp="$RVPN_RUN/tags.txt"
+	patreon_tag_file=$RVPN_RUN/patreon.tag
 	: >"$outbounds_tmp"
 	: >"$tags_tmp"
+	: >"$patreon_tag_file"
 
 	# One uci show — avoid hundreds of uci get per node field
 	uci_show=$RVPN_RUN/uci-rvpn.show
@@ -125,6 +130,23 @@ sb_generate() {
 		v=$(sed -n "s/^rvpn\\.$1\\.$2='\\(.*\\)'$/\\1/p" "$uci_show" | head -1)
 		[ -n "$v" ] && { printf '%s' "$v"; return 0; }
 		sed -n "s/^rvpn\\.$1\\.$2=\\(.*\\)$/\\1/p" "$uci_show" | head -1
+	}
+
+	# Register outbound tag for urltest, or as dedicated Patreon exit (role=patreon).
+	sb_register_tag() {
+		_id=$1
+		_tag=$2
+		_role=$(sb_uci_get "$_id" role)
+		if [ "$_role" = "patreon" ]; then
+			if [ ! -s "$patreon_tag_file" ]; then
+				printf '%s\n' "$_tag" >"$patreon_tag_file"
+				log "patreon outbound: $_tag"
+			else
+				log "WARN: ignore extra patreon node $_tag (already have $(cat "$patreon_tag_file"))"
+			fi
+		else
+			printf '%s\n' "$_tag" >>"$tags_tmp"
+		fi
 	}
 
 	for id in $(sed -n 's/^rvpn\.\([^=]*\)=node$/\1/p' "$uci_show"); do
@@ -156,7 +178,7 @@ sb_generate() {
 			fi
 			printf '{"type":"hysteria2","tag":"%s","server":"%s","server_port":%s,"password":"%s"%s,"tls":{"enabled":true,"server_name":"%s","insecure":%s}}\n' \
 				"$tag_j" "$server_j" "$port" "$pw_j" "$bw" "$sni_j" "$insecure" >>"$outbounds_tmp"
-			echo "$tag" >>"$tags_tmp"
+			sb_register_tag "$id" "$tag"
 			;;
 		vless)
 			uuid=$(sb_uci_get "$id" uuid)
@@ -232,7 +254,7 @@ sb_generate() {
 			esac
 			printf '{"type":"vless","tag":"%s","server":"%s","server_port":%s,"uuid":"%s","packet_encoding":"xudp","tls":{"enabled":true,"server_name":"%s","utls":{"enabled":true,"fingerprint":"%s"}%s}%s%s}\n' \
 				"$tag_j" "$server_j" "$port" "$uuid_j" "$sni_j" "$fp_j" "$tls_extra" "$flow_json" "$transport_json" >>"$outbounds_tmp"
-			echo "$tag" >>"$tags_tmp"
+			sb_register_tag "$id" "$tag"
 			;;
 		trojan)
 			pw=$(sb_uci_get "$id" password)
@@ -275,7 +297,7 @@ sb_generate() {
 			esac
 			printf '{"type":"trojan","tag":"%s","server":"%s","server_port":%s,"password":"%s","tls":{"enabled":true,"server_name":"%s","utls":{"enabled":true,"fingerprint":"%s"}}%s}\n' \
 				"$tag_j" "$server_j" "$port" "$pw_j" "$sni_j" "$fp_j" "$transport_json" >>"$outbounds_tmp"
-			echo "$tag" >>"$tags_tmp"
+			sb_register_tag "$id" "$tag"
 			;;
 		ss|shadowsocks)
 			pw=$(sb_uci_get "$id" password)
@@ -285,7 +307,7 @@ sb_generate() {
 			method_j=$(json_escape "$method")
 			printf '{"type":"shadowsocks","tag":"%s","server":"%s","server_port":%s,"method":"%s","password":"%s"}\n' \
 				"$tag_j" "$server_j" "$port" "$method_j" "$pw_j" >>"$outbounds_tmp"
-			echo "$tag" >>"$tags_tmp"
+			sb_register_tag "$id" "$tag"
 			;;
 		*)
 			log "WARN: skip unsupported node type '$type' ($id)"
@@ -294,9 +316,15 @@ sb_generate() {
 	done
 
 	if [ ! -s "$tags_tmp" ]; then
-		log "ERROR: no enabled VPN nodes"
+		log "ERROR: no enabled VPN nodes for urltest"
 		return 1
 	fi
+
+	patreon_tag=
+	[ -s "$patreon_tag_file" ] && patreon_tag=$(head -1 "$patreon_tag_file")
+	patreon_out=rvpn-urltest
+	[ -n "$patreon_tag" ] && patreon_out=$patreon_tag
+	patreon_out_j=$(json_escape "$patreon_out")
 
 	obs='['
 	sep=
@@ -321,11 +349,15 @@ sb_generate() {
 	obs="$obs]"
 
 	if [ "$vpn_cidr" != "[]" ] && [ -n "$vpn_cidr" ]; then
-		inner=$(echo "$vpn_cidr" | sed 's/^\[//;s/\]$//')
-		ip_route_json="[\"$fake_j\",$inner]"
+		# Real DC/CDN IPs only — NOT FakeIP. FakeIP must sniff first so
+		# domain rules (e.g. Patreon → dedicated node) can match.
+		ip_route_json=$vpn_cidr
 	else
-		ip_route_json="[\"$fake_j\"]"
+		ip_route_json=""
 	fi
+	fake_catch_json="[\"$fake_j\"]"
+	early_ip_rule=
+	[ -n "$ip_route_json" ] && early_ip_rule="{\"ip_cidr\": $ip_route_json, \"outbound\": \"rvpn-urltest\"},"
 
 	umask 077
 	cat >"$RVPN_SB_JSON" <<EOF
@@ -353,6 +385,7 @@ sb_generate() {
     "rules": [
       {"query_type": ["HTTPS", "SVCB"], "action": "reject"},
       {"domain_suffix": $games_dom, "server": "local"},
+      {"domain_suffix": $patreon_dom, "server": "fakeip", "rewrite_ttl": 300},
       {"domain_suffix": $vpn_dom, "server": "fakeip", "rewrite_ttl": 300}
     ],
     "final": "local",
@@ -384,12 +417,14 @@ sb_generate() {
     "default_domain_resolver": "local",
     "rules": [
       {"inbound": ["dns-in"], "action": "hijack-dns"},
-      {"ip_cidr": $ip_route_json, "outbound": "rvpn-urltest"},
+      $early_ip_rule
       {"action": "sniff", "sniffer": ["http", "tls", "quic", "dns"], "timeout": "200ms"},
       {"protocol": "dns", "action": "hijack-dns"},
-      {"ip_is_private": true, "outbound": "direct"},
+      {"domain_suffix": $patreon_dom, "outbound": "$patreon_out_j"},
       {"domain_suffix": $games_dom, "outbound": "direct"},
-      {"domain_suffix": $vpn_dom, "outbound": "rvpn-urltest"}
+      {"domain_suffix": $vpn_dom, "outbound": "rvpn-urltest"},
+      {"ip_cidr": $fake_catch_json, "outbound": "rvpn-urltest"},
+      {"ip_is_private": true, "outbound": "direct"}
     ],
     "final": "direct",
     "auto_detect_interface": true

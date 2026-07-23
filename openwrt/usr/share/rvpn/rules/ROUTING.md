@@ -14,7 +14,8 @@
 | Свои домены (быстрый add) | **VPN** | `vpn-user.txt` (`rvpnctl add-domain`) |
 | Instagram / Meta / Discord / TikTok / X (+ notify/CDN companions) | **VPN** | `vpn-domains.txt` (+ meta в `vpn-cidr.txt`) |
 | Spotify / Twitch / SoundCloud / Reddit | **VPN** | `vpn-domains.txt` |
-| Patreon / LinkedIn / Notion / Figma / Canva | **VPN** | `vpn-domains.txt` |
+| Patreon | **FakeIP → нода `role=patreon`** | `patreon-domains.txt` (после sniff; не AEZA — CF 1005/1009) |
+| LinkedIn / Notion / Figma / Canva | **VPN** | `vpn-domains.txt` |
 | APNs (`push.apple.com`) | **VPN** | `vpn-domains.txt` (ISP DNS часто не резолвит) |
 | App Store / Music CDN (`itunes` / `mzstatic` / `apps` / `music.apple.com`) | **DIRECT** | не в VPN — иначе App Store «Не удалось подключиться» |
 | Google FCM HTTPS | **VPN** | под `googleapis.com`; **mtalk:5228 DIRECT** (`games-domains.txt`) — иначе Rockstar |

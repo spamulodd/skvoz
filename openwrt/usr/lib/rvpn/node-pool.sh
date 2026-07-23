@@ -95,6 +95,9 @@ pool_probe_all() {
 	for id in $(pool_list_node_ids); do
 		en=$(uci -q get "rvpn.$id.enabled")
 		src=$(uci -q get "rvpn.$id.source")
+		role=$(uci -q get "rvpn.$id.role")
+		# Dedicated Patreon exit — never pool-managed
+		[ "$role" = "patreon" ] && continue
 		case "$en" in
 		1) ;;
 		*)
@@ -152,6 +155,7 @@ pool_optimize() {
 		cand=$POOL_DIR/fallback.ids
 		: >"$cand"
 		for id in $(pool_list_node_ids); do
+			[ "$(uci -q get "rvpn.$id.role")" = "patreon" ] && continue
 			pri=$(uci -q get "rvpn.$id.priority")
 			case "$pri" in ''|*[!0-9]*) pri=99 ;; esac
 			printf '%02d\t%s\n' "$pri" "$id" >>"$cand"
@@ -175,6 +179,8 @@ pool_optimize() {
 	changed=0
 	while IFS="$(printf '\t')" read -r delay tag id; do
 		[ -n "$id" ] || continue
+		role=$(uci -q get "rvpn.$id.role")
+		[ "$role" = "patreon" ] && continue
 		if grep -qxF "$id" "$sel" 2>/dev/null; then
 			cur=$(uci -q get "rvpn.$id.enabled")
 			if [ "$cur" != "1" ]; then
