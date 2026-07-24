@@ -14,7 +14,7 @@
 | Свои домены (быстрый add) | **VPN** | `vpn-user.txt` (`rvpnctl add-domain`) |
 | Instagram / Meta / Discord / TikTok / X (+ notify/CDN companions) | **VPN** | `vpn-domains.txt` (+ meta в `vpn-cidr.txt`) |
 | Spotify / Twitch / SoundCloud / Reddit | **VPN** | `vpn-domains.txt` |
-| Patreon | **FakeIP → нода `role=patreon`** | `patreon-domains.txt` (после sniff; не AEZA — CF 1005/1009) |
+| Patreon | **FakeIP `198.19/16` → нода `role=patreon`** | `patreon-domains.txt` (после sniff; не AEZA) |
 | LinkedIn / Notion / Figma / Canva | **VPN** | `vpn-domains.txt` |
 | APNs (`push.apple.com`) | **VPN** | `vpn-domains.txt` (ISP DNS часто не резолвит) |
 | App Store / Music CDN (`itunes` / `mzstatic` / `apps` / `music.apple.com`) | **DIRECT** | не в VPN — иначе App Store «Не удалось подключиться» |
@@ -52,14 +52,15 @@ CIDR (IP→VPN) обновляются раз в неделю (cron `skvoz-cidr`
 Клиент ходит на media DC **по IP**. Неполный `vpn-cidr.txt` = текст есть, фото/видео/стикеры только в части чатов.
 
 Домены: `telegram.org`, `t.me`, `cdn-telegram.org`, `telesco.pe`, `tg.dev`, `usercontent.dev` и др. в `vpn-domains.txt` (FakeIP).  
-Скорость файлов: DC/media IP → `vpn-cidr` **до** sniff (без ожидания 200ms); FakeIP `198.18/15` тоже в `ip_cidr`.  
+Скорость файлов: DC/media IP → `vpn-cidr` **до** sniff; VPN FakeIP `198.18.0.0/16` тоже early→urltest (YouTube без ожидания sniff).  
+Patreon: отдельный FakeIP `198.19.0.0/16` → sniff → `role=patreon` (не urltest/AEZA). nft TPROXY по-прежнему на весь `198.18.0.0/15`.  
 HY2: `hy2_up_mbps` / `hy2_down_mbps` (по умолчанию **0 = не задавать**; неверные значения портят скорость).  
 urltest interval по умолчанию `2m`. OTA после установки **перезапускает** сервис (иначе остаётся старый sing-box.json).
 CDN-файлы каналов (>100k) — IP из `149.154.160.0/20` и официального cidr.txt → `vpn-cidr.txt` → nft TPROXY **до** zapret/QUIC-drop.
 
-**Скорость (sing-box), порядок route:** `dns-in`→hijack → `ip_cidr`→VPN → sniff 200ms → `protocol dns` → `ip_is_private`→direct → games→direct → domains→VPN. FakeIP TTL 300s.  
-**Важно:** `ip_is_private` нельзя ставить до hijack DNS — иначе FakeIP `127.0.0.42` уходит в direct и DNS ломается.  
-**QUIC:** udp/443 reject на WAN, но FakeIP + `vpn_cidr` **accept** — TG через VPN не режется.
+**Скорость (sing-box), порядок route:** `dns-in` → early (`vpn_cidr` + `198.18/16`)→urltest → sniff 200ms → Patreon domains→`role=patreon` → games→direct → vpn domains→urltest → `198.19/16`→patreon → `ip_is_private`→direct.  
+**Важно:** не класть весь `/15` в early `ip_cidr` — туда попадёт Patreon `198.19` и уйдёт на AEZA (CF 1005).  
+**QUIC:** udp/443 reject на WAN, но FakeIP + `vpn_cidr` **accept** — TG/YT через VPN не режется.
 
 Источники: https://core.telegram.org/resources/cidr.txt + ipverse ASN (Meta/X/Discord/Telegram).  
 Обновление: `sh tools/sync-vpn-cidr.sh` / на роутере `rvpnctl sync-cidr`.

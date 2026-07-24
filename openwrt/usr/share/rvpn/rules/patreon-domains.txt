@@ -1,6 +1,6 @@
-# Patreon → FakeIP + dedicated outbound (node role=patreon).
-# Must FakeIP so nft tproxy catches LAN (real CF IPs = RU DIRECT → CF 1009).
-# Not in vpn-domains urltest (AEZA gets CF 1005).
+# Patreon → FakeIP pool 198.19.0.0/16 + dedicated outbound (node role=patreon).
+# Must NOT share 198.18.0.0/16 with YouTube/VPN (that pool early→urltest / AEZA → CF 1005).
+# nft still covers whole 198.18.0.0/15 so LAN FakeIP is tproxy'd.
 patreon.com
 patreonusercontent.com
 patreoncommunity.com

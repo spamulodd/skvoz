@@ -72,6 +72,20 @@ sb_generate() {
 	fake=$(uci_get fakeip_inet4_range)
 	[ -n "$fake" ] || fake=198.18.0.0/15
 	valid_ipv4_cidr "$fake" || fake=198.18.0.0/15
+	# Dual FakeIP pools inside the nft-covered /15:
+	#  198.18.0.0/16 — VPN/YouTube early→urltest (no sniff wait)
+	#  198.19.0.0/16 — Patreon only → sniff → role=patreon outbound
+	# nft still TPROXYs whole 198.18.0.0/15 (UCI default).
+	fake_fast=198.18.0.0/16
+	fake_pat=198.19.0.0/16
+	# Keep aggregate for nft callers / logging; prefer configured /15 if set
+	case "$fake" in
+	198.18.0.0/15) ;;
+	*)
+		log "WARN: fakeip_inet4_range=$fake — dual pools still use 198.18/16+198.19/16; keep nft on 198.18.0.0/15"
+		fake=198.18.0.0/15
+		;;
+	esac
 	ut_url=$(uci_get urltest_url)
 	[ -n "$ut_url" ] || ut_url=https://www.gstatic.com/generate_204
 	ut_iv=$(uci_get urltest_interval)
@@ -102,6 +116,8 @@ sb_generate() {
 	ut_url_j=$(json_escape "$ut_url")
 	listen_j=$(json_escape "$listen")
 	fake_j=$(json_escape "$fake")
+	fake_fast_j=$(json_escape "$fake_fast")
+	fake_pat_j=$(json_escape "$fake_pat")
 	ll_j=$(json_escape "$ll")
 	ut_iv_j=$(json_escape "$ut_iv")
 
@@ -349,15 +365,15 @@ sb_generate() {
 	obs="$obs]"
 
 	if [ "$vpn_cidr" != "[]" ] && [ -n "$vpn_cidr" ]; then
-		# Real DC/CDN IPs only — NOT FakeIP. FakeIP must sniff first so
-		# domain rules (e.g. Patreon → dedicated node) can match.
-		ip_route_json=$vpn_cidr
+		inner=$(echo "$vpn_cidr" | sed 's/^\[//;s/\]$//')
+		# Early: real vpn_cidr + VPN FakeIP pool (YouTube etc.) — skip sniff.
+		# Patreon pool 198.19/16 is NOT here — must sniff for dedicated outbound.
+		ip_route_json="[\"$fake_fast_j\",$inner]"
 	else
-		ip_route_json=""
+		ip_route_json="[\"$fake_fast_j\"]"
 	fi
-	fake_catch_json="[\"$fake_j\"]"
-	early_ip_rule=
-	[ -n "$ip_route_json" ] && early_ip_rule="{\"ip_cidr\": $ip_route_json, \"outbound\": \"rvpn-urltest\"},"
+	early_ip_rule="{\"ip_cidr\": $ip_route_json, \"outbound\": \"rvpn-urltest\"},"
+	patreon_ip_rule="{\"ip_cidr\": [\"$fake_pat_j\"], \"outbound\": \"$patreon_out_j\"},"
 
 	umask 077
 	cat >"$RVPN_SB_JSON" <<EOF
@@ -380,12 +396,13 @@ sb_generate() {
     "servers": [
       {"tag": "local", "type": "udp", "server": "8.8.8.8"},
       {"tag": "yandex", "type": "udp", "server": "77.88.8.8"},
-      {"tag": "fakeip", "type": "fakeip", "inet4_range": "$fake_j"}
+      {"tag": "fakeip", "type": "fakeip", "inet4_range": "$fake_fast_j"},
+      {"tag": "fakeip-patreon", "type": "fakeip", "inet4_range": "$fake_pat_j"}
     ],
     "rules": [
       {"query_type": ["HTTPS", "SVCB"], "action": "reject"},
       {"domain_suffix": $games_dom, "server": "local"},
-      {"domain_suffix": $patreon_dom, "server": "fakeip", "rewrite_ttl": 300},
+      {"domain_suffix": $patreon_dom, "server": "fakeip-patreon", "rewrite_ttl": 300},
       {"domain_suffix": $vpn_dom, "server": "fakeip", "rewrite_ttl": 300}
     ],
     "final": "local",
@@ -423,7 +440,7 @@ sb_generate() {
       {"domain_suffix": $patreon_dom, "outbound": "$patreon_out_j"},
       {"domain_suffix": $games_dom, "outbound": "direct"},
       {"domain_suffix": $vpn_dom, "outbound": "rvpn-urltest"},
-      {"ip_cidr": $fake_catch_json, "outbound": "rvpn-urltest"},
+      $patreon_ip_rule
       {"ip_is_private": true, "outbound": "direct"}
     ],
     "final": "direct",
